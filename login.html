@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Cyclo Credit Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    animation: {
+                        'blob': 'blob 7s infinite',
+                    },
+                    keyframes: {
+                        blob: {
+                            '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                            '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                            '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                            '100%': { transform: 'translate(0px, 0px) scale(1)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.45);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+        }
+
+        .bg-image-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .bg-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scale(1.05);
+            transition: transform 10s ease-out;
+            filter: saturate(1.2) contrast(1.1);
+        }
+
+        .bg-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%);
+        }
+    </style>
+</head>
+
+<body
+    class="bg-slate-50 min-h-screen flex items-center justify-center p-4 overflow-hidden relative transition-colors duration-300">
+    <!-- Background Image -->
+    <div class="bg-image-container">
+        <img src="assets/building-bg.jpg" alt="Building Background" class="bg-image">
+        <div class="bg-overlay"></div>
+    </div>
+
+    <div
+        class="glass-morphism w-full max-w-md p-8 rounded-[2.5rem] relative z-10 animate-in fade-in zoom-in duration-700">
+        <div class="text-center mb-10">
+            <div class="inline-flex p-4 bg-blue-600 rounded-2xl shadow-xl shadow-blue-200 mb-4 text-white">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+            </div>
+            <h1 class="text-3xl font-black text-slate-800 tracking-tight uppercase">Cyclo Manager
+            </h1>
+            <p class="text-slate-500 font-bold text-xs uppercase tracking-[0.2em] mt-2">Secure
+                Gateway</p>
+        </div>
+
+        <form id="login-form" class="space-y-6">
+            <div class="space-y-1">
+                <label class="block text-[10px] font-black text-slate-400 uppercase px-1">Email
+                    Address</label>
+                <div class="relative">
+                    <input type="email" id="email" required placeholder="admin@cyclo.com"
+                        class="w-full p-4 pl-12 border border-slate-200 rounded-2xl bg-white/50 outline-none focus:ring-4 focus:ring-blue-100 text-sm font-bold text-slate-700 transition-all">
+                    <svg class="w-5 h-5 absolute left-4 top-4 text-slate-300" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.206" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="space-y-1">
+                <label class="block text-[10px] font-black text-slate-400 uppercase px-1">Password</label>
+                <div class="relative">
+                    <input type="password" id="password" required placeholder="••••••••"
+                        class="w-full p-4 pl-12 border border-slate-200 rounded-2xl bg-white/50 outline-none focus:ring-4 focus:ring-blue-100 text-sm font-bold text-slate-700 transition-all">
+                    <svg class="w-5 h-5 absolute left-4 top-4 text-slate-300" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                </div>
+            </div>
+
+            <div id="error-msg"
+                class="hidden p-3 bg-red-50 text-red-500 text-xs font-bold rounded-xl border border-red-100 animate-in slide-in-from-top-2">
+            </div>
+
+            <button type="submit"
+                class="w-full py-4 bg-blue-600 text-white font-black text-sm uppercase rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-[0.98] transition-all">
+                Sign In
+            </button>
+        </form>
+
+        <div class="mt-8 pt-8 border-t border-slate-100 text-center">
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Internal Corporate System</p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+
+        document.getElementById('login-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorEl = document.getElementById('error-msg');
+
+            errorEl.classList.add('hidden');
+
+            try {
+                const res = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Login failed');
+
+                localStorage.setItem('cyclo_token', data.token);
+                localStorage.setItem('cyclo_user', JSON.stringify(data.user));
+
+                // Redirect based on role
+                if (data.user.role === 'admin') {
+                    window.location.href = 'admin.html';
+                } else {
+                    window.location.href = 'dashbord.html';
+                }
+            } catch (err) {
+                errorEl.textContent = err.message;
+                errorEl.classList.remove('hidden');
+            }
+        };
+
+        // Redirect if already logged in
+        if (localStorage.getItem('cyclo_token')) {
+            const user = JSON.parse(localStorage.getItem('cyclo_user'));
+            if (user && user.role === 'admin') window.location.href = 'admin.html';
+            else window.location.href = 'dashbord.html';
+        }
+    </script>
+</body>
+
+</html>

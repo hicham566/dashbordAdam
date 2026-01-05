@@ -1,0 +1,1896 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyclo Credit Line Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        .excel-border {
+            border: 1px solid #e2e8f0;
+        }
+
+        .row-hover:hover {
+            background-color: #f8fafc;
+        }
+
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .transition-width {
+            transition: width 0.5s ease-in-out;
+        }
+
+        .sticky-header th {
+            position: sticky;
+            top: 0;
+            background: #f1f5f9;
+            z-index: 10;
+        }
+
+        .modal-overlay {
+            display: none;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        @keyframes pulse-soft {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        .syncing {
+            animation: pulse-soft 1s infinite;
+        }
+
+        .date-dropdown {
+            display: none;
+            position: absolute;
+            right: 0;
+            bottom: 100%;
+            z-index: 50;
+            background: white;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 -10px 15px -3px rgb(0 0 0 / 0.1);
+            border-radius: 0.75rem;
+            width: 160px;
+            padding: 6px;
+            margin-bottom: 6px;
+        }
+
+        .date-dropdown.active {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .day-option {
+            @apply w-full text-left px-4 py-2.5 text-[10px] font-black uppercase hover:bg-slate-50 border-b border-slate-50 last:border-b-0 rounded-lg transition-colors flex justify-between items-center;
+        }
+
+        .day-option:hover {
+            @apply text-blue-600 bg-blue-50/50;
+        }
+
+        .month-card {
+            flex: 0 0 calc((100% - 3rem) / 4);
+            @apply rounded-[1.5rem] border border-slate-200 transition-all relative overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 duration-300 flex flex-col justify-between;
+        }
+
+        @media (max-width: 1024px) {
+            .month-card {
+                flex: 0 0 260px;
+            }
+        }
+
+        .month-card.has-due {
+            @apply bg-white border-slate-200 shadow-sm;
+        }
+
+        .month-card.empty {
+            @apply bg-slate-50/50 border-transparent opacity-30;
+        }
+
+        .nav-btn {
+            @apply p-2.5 bg-white border border-slate-200 hover:border-blue-500 rounded-xl text-slate-400 hover:text-blue-600 shadow-sm transition-all active:scale-95;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        #tracker-range-tab,
+        #quarter-summary-tab {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            margin-top: 0;
+            margin-bottom: 0;
+            padding: 0;
+            border-width: 0;
+        }
+
+        #tracker-range-tab.active,
+        #quarter-summary-tab.active {
+            max-height: 500px;
+            opacity: 1;
+            margin-bottom: 1rem;
+            padding: 1.5rem;
+            border-width: 2px;
+        }
+
+        .config-card {
+            @apply bg-white rounded-[1.5rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col;
+        }
+
+        .config-header {
+            @apply px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #e2e8f0;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 min-h-screen font-sans text-slate-900 text-[13px]">
+    <div class="max-w-7xl mx-auto p-4 md:p-8">
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800 tracking-tight text-blue-900 uppercase">Cyclo Credit Line
+                    Manager</h1>
+                <p class="text-slate-500 text-sm italic">Master Portfolio | Base Limit Currency: <span
+                        class="font-bold text-blue-600">EUR</span></p>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <div id="global-alert"
+                    class="hidden px-4 py-2 bg-red-600 text-white rounded-lg animate-pulse font-bold text-sm shadow-lg shadow-red-500/30">
+                    ⚠️ CREDIT LIMIT EXCEEDED
+                </div>
+
+                <button onclick="openConfigModal()"
+                    class="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg shadow-sm transition-all font-bold uppercase text-xs">
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Configuration
+                </button>
+            </div>
+        </div>
+
+        <!-- MAIN NAVIGATION MENU -->
+        <div class="flex gap-2 mb-8 bg-slate-100 p-1.5 rounded-xl w-fit border border-slate-200">
+            <button onclick="switchPage('dashboard')" id="btn-dashboard"
+                class="px-6 py-2 rounded-lg text-xs font-bold uppercase transition-all shadow-sm bg-white text-blue-600">Dashboard</button>
+            <button onclick="switchPage('overall')" id="btn-overall"
+                class="px-6 py-2 rounded-lg text-xs font-bold uppercase transition-all text-slate-500 hover:bg-white/50 hover:text-slate-600">Overall
+                Look</button>
+        </div>
+
+        <!-- ================= PAGE 1: DASHBOARD ================= -->
+        <div id="view-dashboard" class="animate-in fade-in duration-300">
+            <div id="bank-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8"></div>
+
+            <div class="mb-10 relative">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h3 onclick="toggleTrackerRangeTab()"
+                            class="text-[10px] font-black text-slate-500 uppercase tracking-[0.25em] flex items-center gap-2 cursor-pointer group">
+                            <div class="p-1.5 bg-blue-50 rounded-lg group-hover:bg-blue-600 transition-colors">
+                                <svg class="w-4 h-4 text-blue-600 group-hover:text-white transition-colors" fill="none"
+                                    stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                            </div>
+                            Monthly Repayment Outlook
+                        </h3>
+                        <p class="text-[9px] text-slate-400 font-bold uppercase mt-1">Viewing: <span
+                                id="display-range-text" class="text-blue-600">January 2024 onwards</span></p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="scrollToToday()"
+                            class="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase border border-blue-100 hover:bg-blue-100 transition-colors">Today</button>
+                        <button onclick="scrollTracker(-1)" class="nav-btn">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">
+                                <path d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </button>
+                        <button onclick="scrollTracker(1)" class="nav-btn">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">
+                                <path d="M9 5l7 7-7 7" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="tracker-range-tab"
+                    class="bg-white border-2 border-slate-100 rounded-2xl p-6 shadow-xl shadow-slate-200/50 mb-4 animate-in slide-in-from-top-4">
+                    <div class="flex flex-col md:flex-row gap-8 items-center justify-between">
+                        <div class="flex flex-wrap items-center gap-4">
+                            <div class="flex items-center gap-3">
+                                <span
+                                    class="text-[10px] font-black text-slate-400 uppercase tracking-widest">From</span>
+                                <div class="flex bg-slate-50 p-1 rounded-xl border">
+                                    <select id="start-month" onchange="updateTrackerConfig()"
+                                        class="bg-transparent text-[11px] font-bold px-3 py-1.5 outline-none"></select>
+                                    <select id="start-year" onchange="updateTrackerConfig()"
+                                        class="bg-transparent text-[11px] font-bold px-3 py-1.5 border-l border-slate-200 outline-none"></select>
+                                </div>
+                            </div>
+                            <div class="text-slate-300 hidden md:block">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                </svg>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">To</span>
+                                <div class="flex bg-slate-50 p-1 rounded-xl border">
+                                    <select id="end-month" onchange="updateTrackerConfig()"
+                                        class="bg-transparent text-[11px] font-bold px-3 py-1.5 outline-none">
+                                        <option value="auto">Auto</option>
+                                    </select>
+                                    <select id="end-year" onchange="updateTrackerConfig()"
+                                        class="bg-transparent text-[11px] font-bold px-3 py-1.5 border-l border-slate-200 outline-none">
+                                        <option value="auto">Auto (Endless)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 w-full md:w-auto">
+                            <button onclick="setQuickRange('year')"
+                                class="flex-1 md:flex-none px-4 py-2 bg-slate-50 text-[10px] font-bold uppercase text-slate-600 rounded-xl hover:bg-slate-100 border transition-all">Current
+                                Year</button>
+                            <button onclick="setQuickRange('auto')"
+                                class="flex-1 md:flex-none px-4 py-2 bg-blue-600 text-[10px] font-bold uppercase text-white rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all">Reset
+                                to Auto</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="month-tracker" class="flex overflow-x-hidden gap-4 pb-8 pt-2 scroll-smooth scrollbar-hide">
+                </div>
+            </div>
+
+            <!-- Filter Bar -->
+            <div
+                class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 items-end">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Invoice #</label>
+                    <input type="text" id="filter-invoice" oninput="renderTable(true)" placeholder="F°..."
+                        class="w-full p-2 border rounded-lg text-sm bg-slate-50/50">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Supplier</label>
+                    <select id="filter-supplier" onchange="renderTable(true)"
+                        class="w-full p-2 border rounded-lg text-sm bg-white">
+                        <option value="all">All Suppliers</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Bank Status</label>
+                    <select id="filter-status-bank" onchange="renderTable(true)"
+                        class="w-full p-2 border rounded-lg text-sm bg-white">
+                        <option value="all">All Bank Status</option>
+                        <option value="Pending">Pending Repayment</option>
+                        <option value="Paid">Bank Settled</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Sup. Status</label>
+                    <select id="filter-status-supplier" onchange="renderTable(true)"
+                        class="w-full p-2 border rounded-lg text-sm bg-white">
+                        <option value="all">All Vendor Status</option>
+                        <option value="Pending">Vendor Unpaid</option>
+                        <option value="Paid">Vendor Paid</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Method</label>
+                    <select id="filter-method" onchange="renderTable(true)"
+                        class="w-full p-2 border rounded-lg text-sm bg-white">
+                        <option value="all">All Methods</option>
+                        <option value="Credit Line">L/C</option>
+                        <option value="Wire Transfer">TW</option>
+                        <option value="Cheque">CHQ</option>
+                    </select>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="clearFilters()"
+                        class="flex-1 p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-bold text-slate-600 transition-colors uppercase tracking-widest">Reset</button>
+                    <button onclick="exportToExcel()"
+                        class="p-2 bg-green-600 hover:bg-green-700 rounded-lg text-white transition-all shadow-lg"
+                        title="Export to Excel">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                    </button>
+                    <button onclick="document.getElementById('excel-import-input').click()"
+                        class="p-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-white transition-all shadow-lg"
+                        title="Import Excel">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                    </button>
+                    <input type="file" id="excel-import-input" class="hidden" accept=".xlsx, .xls, .csv"
+                        onchange="handleFileImport(event)">
+                    <button onclick="openEntryModal()"
+                        class="flex-1 p-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs font-bold text-white shadow-lg transition-all uppercase tracking-widest">
+                        + New
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-12">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left border-collapse" id="data-table">
+                        <thead class="sticky-header">
+                            <tr
+                                class="bg-slate-100 text-slate-500 font-semibold uppercase text-[10px] tracking-widest border-b border-slate-200">
+                                <th class="px-4 py-3 border-r border-slate-200">Date</th>
+                                <th class="px-4 py-3 border-r border-slate-200">Supplier</th>
+                                <th class="px-4 py-3 border-r border-slate-200 font-mono">Invoice #</th>
+                                <th class="px-4 py-3 border-r border-slate-200 text-right">Amount</th>
+                                <th class="px-4 py-3 border-r border-slate-200 text-center">Bank</th>
+                                <th class="px-4 py-3 border-r border-slate-200 text-center">Method</th>
+                                <th class="px-4 py-3 border-r border-slate-200 text-center">Sup. Status</th>
+                                <th class="px-4 py-3 border-r border-slate-200 text-center">Bank Status</th>
+                                <th class="px-4 py-3 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+                <!-- Pagination Controls -->
+                <div id="pagination-container"
+                    class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PAGE 2: OVERALL LOOK ================= -->
+        <div id="view-overall" class="hidden animate-in fade-in duration-300">
+            <div class="mb-10">
+                <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-slate-700 text-white rounded-xl shadow-lg">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-[11px] font-black text-slate-800 uppercase tracking-widest">Supplier
+                                Situation Account</h3>
+                            <p class="text-[9px] text-slate-400 uppercase font-bold">Individual or Combined Vendor
+                                Position</p>
+                        </div>
+                    </div>
+
+                    <div
+                        class="flex flex-wrap items-center gap-3 bg-white p-2 rounded-xl border shadow-sm self-start md:self-auto">
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] font-black text-slate-400 uppercase ml-2">Filter Vendor</span>
+                            <select id="situation-supplier-select" onchange="calculateMetrics()"
+                                class="bg-slate-50 text-xs font-black px-4 py-1.5 rounded-lg outline-none border-0 ring-1 ring-slate-200 focus:ring-blue-500 transition-all">
+                                <option value="all">Combined (All Vendors)</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2 border-l border-slate-100 pl-3">
+                            <span class="text-[10px] font-black text-slate-400 uppercase">Year</span>
+                            <select id="situation-year-select" onchange="calculateMetrics()"
+                                class="bg-slate-50 text-xs font-black px-3 py-1.5 rounded-lg outline-none border-0 ring-1 ring-slate-200 focus:ring-blue-500 transition-all">
+                                <option value="all">All Time</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div onclick="showOpenSituationDetails()"
+                        class="bg-white p-6 rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col justify-between cursor-pointer hover:shadow-md hover:border-blue-200 transition-all group">
+                        <div>
+                            <span
+                                class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 group-hover:text-blue-500 transition-colors">Open
+                                Situation</span>
+                            <div class="text-xl font-black text-slate-800" id="global-open-situation">0.00 €</div>
+                            <div id="global-limit-section"
+                                class="hidden mt-2 pt-2 border-t border-dashed border-slate-100 animate-in fade-in slide-in-from-top-1">
+                                <div class="flex justify-between items-end mb-1">
+                                    <span class="text-[9px] font-bold text-slate-400 uppercase">Limit Usage</span>
+                                    <span id="global-limit-val" class="text-[9px] font-black text-slate-600">0.00
+                                        €</span>
+                                </div>
+                                <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                    <div id="global-limit-bar" class="bg-blue-500 h-full transition-width duration-500"
+                                        style="width: 0%"></div>
+                                </div>
+                                <div class="flex justify-between items-center mt-1">
+                                    <span class="text-[8px] font-bold text-slate-400 uppercase">Available</span>
+                                    <span id="global-limit-left" class="text-[9px] font-black text-emerald-600">0.00
+                                        €</span>
+                                </div>
+                            </div>
+                            <p class="text-[9px] text-slate-400 mt-1 uppercase font-bold italic">Outstanding for
+                                selection <span
+                                    class="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity ml-1">(Click
+                                    for details)</span></p>
+                        </div>
+                        <div
+                            class="mt-4 pt-4 border-t border-slate-50 text-[10px] font-bold text-blue-600 flex justify-between uppercase">
+                            <span>Pending Invoices</span>
+                            <span id="global-open-count">0 items</span>
+                        </div>
+                    </div>
+
+                    <div
+                        class="bg-white p-6 rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col justify-between">
+                        <div>
+                            <span
+                                class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Total
+                                Payments to Vendors</span>
+                            <div class="text-xl font-black text-emerald-600" id="global-total-paid">0.00 €</div>
+                            <p class="text-[9px] text-slate-400 mt-1 uppercase font-bold italic">Settled historical
+                                volume</p>
+                        </div>
+                        <div
+                            class="mt-4 pt-4 border-t border-slate-50 text-[10px] font-bold text-emerald-600 flex justify-between uppercase">
+                            <span>Paid Records</span>
+                            <span id="global-paid-count">0 items</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 2: QUARTERLY SITUATION SUMMARY -->
+            <div class="mb-10 pt-10 border-t border-dashed border-slate-200">
+                <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-slate-800 text-white rounded-xl shadow-lg">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-[11px] font-black text-slate-800 uppercase tracking-widest">Quarterly
+                                Situational Balance</h3>
+                            <p class="text-[9px] text-slate-400 uppercase font-bold">Multi-Currency Order & Repayment
+                                Balancing</p>
+                        </div>
+                    </div>
+
+                    <div
+                        class="flex items-center gap-3 bg-white p-2 rounded-xl border shadow-sm self-start md:self-auto">
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] font-black text-slate-400 uppercase ml-2">Vendor</span>
+                            <select id="quarterly-balance-supplier-select" onchange="renderQuarterlyBalance()"
+                                class="bg-slate-50 text-[10px] font-black px-3 py-1.5 rounded-lg outline-none border-0 ring-1 ring-slate-200 focus:ring-blue-500 transition-all">
+                                <option value="all">All Vendors</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2 border-l border-slate-100 pl-3">
+                            <span class="text-[10px] font-black text-slate-400 uppercase">Year</span>
+                            <select id="ge-balance-year-select" onchange="renderQuarterlyBalance()"
+                                class="bg-slate-50 text-[10px] font-black px-3 py-1.5 rounded-lg outline-none border-0 ring-1 ring-slate-200 focus:ring-blue-500 transition-all"></select>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="quarterly-balance-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ENTRY FORM MODAL -->
+    <div id="entry-modal" class="modal-overlay fixed inset-0 z-[100] items-center justify-center p-4">
+        <div
+            class="bg-white rounded-[2rem] shadow-2xl max-w-4xl w-full overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+            <div class="px-8 py-6 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                    <div class="p-3 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-200">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 id="modal-title" class="text-xl font-bold text-slate-800 uppercase tracking-tight">Add
+                            Payment Entry</h2>
+                        <p class="text-[10px] text-blue-600 uppercase tracking-widest font-black mt-0.5">Invoice &
+                            Component Management</p>
+                    </div>
+                </div>
+                <button onclick="closeEntryModal()"
+                    class="p-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all text-slate-500 hover:text-slate-800">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                        <path d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="p-8 space-y-8 max-h-[75vh] overflow-y-auto">
+                <div class="space-y-4">
+                    <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <span class="w-4 h-px bg-slate-200"></span>
+                        Invoice Details
+                        <span class="flex-1 h-px bg-slate-200"></span>
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                        <div class="space-y-1">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase px-1">Invoice
+                                Date</label>
+                            <div class="relative">
+                                <input type="date" id="new-date" onchange="autoCalculateDates()"
+                                    class="w-full p-3.5 pl-11 border border-slate-200 rounded-2xl bg-white outline-none focus:ring-4 focus:ring-blue-50 border-blue-100 text-sm font-bold text-slate-700 transition-all">
+                                <svg class="w-5 h-5 absolute left-3.5 top-3.5 text-slate-300" fill="none"
+                                    stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase px-1">Supplier</label>
+                            <div class="relative">
+                                <select id="new-supplier"
+                                    class="w-full p-3.5 pl-11 border border-slate-200 rounded-2xl bg-white outline-none focus:ring-4 focus:ring-blue-50 border-blue-100 text-sm font-bold text-slate-700 appearance-none transition-all"></select>
+                                <svg class="w-5 h-5 absolute left-3.5 top-3.5 text-slate-300" fill="none"
+                                    stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase px-1">Invoice
+                                Number</label>
+                            <div class="relative">
+                                <input type="text" id="new-invoice" placeholder="F°..."
+                                    class="w-full p-3.5 pl-11 border border-slate-200 rounded-2xl bg-white outline-none focus:ring-4 focus:ring-blue-50 border-blue-100 text-sm font-mono font-bold uppercase text-slate-700 transition-all">
+                                <svg class="w-5 h-5 absolute left-3.5 top-3.5 text-slate-300" fill="none"
+                                    stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="block text-[10px] font-black text-blue-600 uppercase px-1">Total Invoice
+                                Amount</label>
+                            <div class="flex gap-2">
+                                <div class="relative flex-1">
+                                    <input type="number" id="new-total-amount" placeholder="0.00"
+                                        class="w-full p-3.5 pl-5 border-2 border-blue-100 bg-blue-50/20 rounded-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 text-sm font-bold text-slate-700 transition-all">
+                                </div>
+                                <select id="new-total-currency"
+                                    class="w-32 p-3.5 border-2 border-blue-100 bg-blue-50/20 rounded-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 text-xs font-bold text-slate-700 transition-all">
+                                    <option value="EUR">EUR</option>
+                                    <option value="MAD">MAD</option>
+                                    <option value="USD">USD</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="space-y-4 pt-4">
+                    <div class="flex justify-between items-center">
+                        <h3
+                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 flex-1">
+                            <span class="w-4 h-px bg-slate-200"></span>
+                            Payment Components
+                            <span class="flex-1 h-px bg-slate-200"></span>
+                        </h3>
+                        <button onclick="addPaymentRow()"
+                            class="ml-4 px-4 py-2 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-100 flex items-center gap-2">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                stroke-width="3">
+                                <path d="M12 4v16m8-8H4" />
+                            </svg>
+                            Add Component
+                        </button>
+                    </div>
+                    <div id="payments-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </div>
+            </div>
+
+            <div class="px-8 py-6 bg-slate-50/50 border-t border-slate-100 flex gap-4 justify-end">
+                <button onclick="closeEntryModal()"
+                    class="px-8 py-3 text-slate-500 font-bold text-[11px] uppercase hover:bg-slate-200 rounded-2xl transition-all">Discard
+                    Changes</button>
+                <button id="modal-submit-btn" onclick="saveNewEntry()"
+                    class="px-12 py-3 bg-blue-600 text-white font-black text-[11px] uppercase rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all">Submit
+                    Entry</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONFIG MODAL -->
+    <div id="config-modal" class="modal-overlay fixed inset-0 z-[100] items-center justify-center p-4">
+        <div
+            class="bg-white rounded-[2rem] shadow-2xl max-w-6xl w-full overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+            <div class="p-8 bg-slate-50 border-b flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                    <div class="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold text-slate-800 uppercase tracking-tight">System Settings</h2>
+                        <p class="text-[10px] text-slate-400 uppercase tracking-widest font-black mt-1">Master
+                            parameters & Platform Configuration</p>
+                    </div>
+                </div>
+                <button onclick="closeConfigModal()"
+                    class="p-3 bg-slate-200 hover:bg-slate-300 rounded-2xl transition-all text-slate-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                        <path d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="p-8 overflow-y-auto max-h-[75vh] bg-slate-50/30">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    <div class="lg:col-span-4 space-y-8">
+                        <div class="config-card border-emerald-100 bg-emerald-50/10">
+                            <div class="config-header">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 bg-emerald-100 text-emerald-600 rounded-xl">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="text-[11px] font-black text-slate-600 uppercase tracking-widest">Exchange
+                                        Rates</h3>
+                                </div>
+                                <button onclick="syncLiveRates()" id="sync-btn"
+                                    class="text-[9px] bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-black uppercase hover:bg-emerald-700 transition-all flex items-center gap-1.5 shadow-md shadow-emerald-200">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    Sync
+                                </button>
+                            </div>
+                            <div class="p-6 space-y-4">
+                                <div class="space-y-1">
+                                    <label class="block text-[10px] font-bold text-emerald-700 uppercase px-1">1 EUR to
+                                        MAD</label>
+                                    <input type="number" id="rate-eur-mad" oninput="updateSettings()"
+                                        class="w-full p-3 border-2 border-emerald-50 rounded-xl font-black text-slate-700 focus:border-emerald-500 outline-none transition-all">
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="block text-[10px] font-bold text-emerald-700 uppercase px-1">1 USD to
+                                        MAD</label>
+                                    <input type="number" id="rate-usd-mad" oninput="updateSettings()"
+                                        class="w-full p-3 border-2 border-emerald-50 rounded-xl font-black text-slate-700 focus:border-emerald-500 outline-none transition-all">
+                                </div>
+                                <div id="last-sync"
+                                    class="text-[9px] text-emerald-500 uppercase font-black text-right pt-2 border-t border-emerald-50">
+                                    Loading...</div>
+                            </div>
+                        </div>
+
+                        <div class="config-card border-blue-100 bg-blue-50/10">
+                            <div class="config-header">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 bg-blue-100 text-blue-600 rounded-xl">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="text-[11px] font-black text-slate-600 uppercase tracking-widest">Quick
+                                        Converter</h3>
+                                </div>
+                            </div>
+                            <div class="p-6 space-y-4">
+                                <div class="flex gap-2">
+                                    <input type="number" id="convert-input" oninput="quickConvert()" placeholder="0.00"
+                                        class="flex-1 p-3 border-2 border-blue-50 rounded-xl font-black text-slate-700 outline-none focus:border-blue-500 bg-white">
+                                    <select id="convert-from" onchange="quickConvert()"
+                                        class="w-24 p-3 bg-white border-2 border-blue-50 rounded-xl text-xs font-black uppercase outline-none"></select>
+                                </div>
+                                <div class="flex justify-center -my-2 relative z-10">
+                                    <div
+                                        class="bg-blue-600 text-white p-1.5 rounded-full shadow-lg border-4 border-white">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                                d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <div class="flex gap-2">
+                                    <div
+                                        class="flex-1 p-3 bg-blue-600 rounded-xl font-black text-white flex justify-between items-center shadow-lg shadow-blue-200">
+                                        <span id="convert-result-val" class="text-lg">0.00</span>
+                                        <select id="convert-to" onchange="quickConvert()"
+                                            class="bg-transparent text-xs font-black uppercase outline-none text-white cursor-pointer"></select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-5 space-y-8">
+                        <div class="config-card">
+                            <div class="config-header">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 bg-indigo-100 text-indigo-600 rounded-xl">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="text-[11px] font-black text-slate-600 uppercase tracking-widest">
+                                        Operational Credit Limits</h3>
+                                </div>
+                            </div>
+                            <div class="p-6 space-y-8">
+                                <div class="space-y-4">
+                                    <div class="flex items-center gap-2 mb-4 px-1">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                                        <label
+                                            class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Bank
+                                            Credit Lines</label>
+                                    </div>
+                                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-4">
+                                        <div class="space-y-1">
+                                            <label class="text-[9px] font-black text-slate-400 uppercase px-1">Target
+                                                Bank</label>
+                                            <select id="config-bank-select" onchange="loadBankLimit()"
+                                                class="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-black uppercase outline-none focus:ring-4 focus:ring-blue-100 transition-all"></select>
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <div class="flex-1 space-y-1">
+                                                <label
+                                                    class="text-[9px] font-black text-slate-400 uppercase px-1">Credit
+                                                    Facility</label>
+                                                <input type="number" id="config-bank-value" oninput="saveBankLimit()"
+                                                    class="w-full p-3 bg-white border border-slate-200 rounded-xl font-black text-slate-700 outline-none focus:ring-4 focus:ring-blue-100"
+                                                    placeholder="0.00">
+                                            </div>
+                                            <div class="w-24 space-y-1">
+                                                <label
+                                                    class="text-[9px] font-black text-slate-400 uppercase px-1">Currency</label>
+                                                <select id="config-bank-currency" onchange="saveBankLimit()"
+                                                    class="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-black uppercase outline-none focus:ring-4 focus:ring-blue-100 transition-all"></select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="pt-6 border-t border-slate-100">
+                                    <div class="flex items-center gap-2 mb-4 px-1">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                                        <label
+                                            class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Supplier
+                                            Open Accounts</label>
+                                    </div>
+                                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-4">
+                                        <div class="space-y-1">
+                                            <label class="text-[9px] font-black text-slate-400 uppercase px-1">Target
+                                                Vendor</label>
+                                            <select id="config-limit-supplier" onchange="loadSupplierLimit()"
+                                                class="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-black uppercase outline-none focus:ring-4 focus:ring-indigo-100 transition-all"></select>
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <div class="flex-1 space-y-1">
+                                                <label
+                                                    class="text-[9px] font-black text-slate-400 uppercase px-1">Facility
+                                                    Amount</label>
+                                                <input type="number" id="config-limit-value"
+                                                    oninput="saveSupplierLimit()"
+                                                    class="w-full p-3 bg-white border border-slate-200 rounded-xl font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-100"
+                                                    placeholder="0.00">
+                                            </div>
+                                            <div class="w-24 space-y-1">
+                                                <label
+                                                    class="text-[9px] font-black text-slate-400 uppercase px-1">Currency</label>
+                                                <select id="config-limit-currency" onchange="saveSupplierLimit()"
+                                                    class="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-black uppercase outline-none"></select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-3 space-y-8">
+                        <div class="config-card h-full">
+                            <div class="config-header">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 bg-slate-100 text-slate-600 rounded-xl">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="text-[11px] font-black text-slate-600 uppercase tracking-widest">Entities
+                                    </h3>
+                                </div>
+                            </div>
+                            <div class="p-6 flex flex-col h-full gap-8">
+                                <div class="flex flex-col flex-1">
+                                    <label
+                                        class="text-[10px] font-black text-slate-400 uppercase mb-3 flex items-center justify-between">
+                                        Suppliers
+                                        <span id="supplier-count-badge"
+                                            class="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[8px]">0</span>
+                                    </label>
+                                    <div class="flex gap-2 mb-3">
+                                        <input type="text" id="new-supplier-input"
+                                            class="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold uppercase outline-none focus:ring-4 focus:ring-slate-100"
+                                            placeholder="NAME">
+                                        <button onclick="addEntity('supplier')"
+                                            class="px-4 bg-slate-800 text-white rounded-xl font-black text-[10px] uppercase hover:bg-slate-900 transition-all">+</button>
+                                    </div>
+                                    <div id="supplier-list-managed"
+                                        class="space-y-1.5 overflow-y-auto max-h-[160px] custom-scrollbar pr-1"></div>
+                                </div>
+
+                                <div class="flex flex-col flex-1 pt-6 border-t border-slate-100">
+                                    <label
+                                        class="text-[10px] font-black text-slate-400 uppercase mb-3 flex items-center justify-between">
+                                        Banks
+                                        <span id="bank-count-badge"
+                                            class="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[8px]">0</span>
+                                    </label>
+                                    <div class="flex gap-2 mb-3">
+                                        <input type="text" id="new-bank-input"
+                                            class="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold uppercase outline-none focus:ring-4 focus:ring-slate-100"
+                                            placeholder="BANK">
+                                        <button onclick="addEntity('bank')"
+                                            class="px-4 bg-slate-800 text-white rounded-xl font-black text-[10px] uppercase hover:bg-slate-900 transition-all">+</button>
+                                    </div>
+                                    <div id="bank-list-managed"
+                                        class="space-y-1.5 overflow-y-auto max-h-[160px] custom-scrollbar pr-1"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6 bg-slate-100 border-t flex justify-end gap-3">
+                <button onclick="closeConfigModal()"
+                    class="px-10 py-3 bg-indigo-600 text-white font-black text-xs uppercase rounded-2xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all">Save
+                    Changes & Exit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BANK CONFIRMATION MODAL -->
+    <div id="bank-confirm-modal" class="modal-overlay fixed inset-0 z-[120] items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-300">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
+                    </svg>
+                </div>
+                <h3 class="text-lg font-bold text-slate-800">Add New Bank</h3>
+            </div>
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Bank Name</label>
+                    <input type="text" id="confirm-bank-name"
+                        class="w-full p-2.5 border rounded-xl font-bold bg-slate-50 text-slate-800 uppercase outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-blue-600 uppercase mb-1">Credit Line (CL)
+                        Limit</label>
+                    <div class="flex gap-2">
+                        <div class="relative flex-1">
+                            <input type="number" id="confirm-bank-limit" placeholder="0.00"
+                                class="w-full p-2.5 border-2 border-blue-50 rounded-xl font-black text-slate-700 outline-none focus:border-blue-500">
+                        </div>
+                        <select id="confirm-bank-limit-currency"
+                            class="w-24 p-2.5 border-2 border-blue-50 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-blue-500 uppercase transition-all">
+                            <option value="EUR">EUR</option>
+                            <option value="MAD">MAD</option>
+                            <option value="USD">USD</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('bank-confirm-modal').classList.remove('active')"
+                    class="flex-1 px-4 py-2.5 bg-slate-100 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors uppercase">Cancel</button>
+                <button onclick="confirmAddBank()"
+                    class="flex-1 px-4 py-2.5 bg-blue-600 text-white font-black text-xs rounded-xl hover:bg-blue-700 transition-all uppercase shadow-lg shadow-blue-200">Confirm
+                    Bank</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SUPPLIER CONFIRMATION MODAL -->
+    <div id="supplier-confirm-modal" class="modal-overlay fixed inset-0 z-[120] items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-300">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                </div>
+                <h3 class="text-lg font-bold text-slate-800">Add New Supplier</h3>
+            </div>
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Supplier Name</label>
+                    <input type="text" id="confirm-supplier-name"
+                        class="w-full p-2.5 border rounded-xl font-bold bg-slate-50 text-slate-800 uppercase outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-blue-600 uppercase mb-1">Open Account Limit</label>
+                    <div class="flex gap-2">
+                        <div class="relative flex-1">
+                            <input type="number" id="confirm-supplier-limit" placeholder="0.00"
+                                class="w-full p-2.5 border-2 border-indigo-50 rounded-xl font-black text-slate-700 outline-none focus:border-indigo-500">
+                        </div>
+                        <select id="confirm-supplier-limit-currency"
+                            class="w-24 p-2.5 border-2 border-indigo-50 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 uppercase transition-all">
+                            <option value="EUR">EUR</option>
+                            <option value="MAD">MAD</option>
+                            <option value="USD">USD</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('supplier-confirm-modal').classList.remove('active')"
+                    class="flex-1 px-4 py-2.5 bg-slate-100 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors uppercase">Cancel</button>
+                <button onclick="confirmAddSupplier()"
+                    class="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-black text-xs rounded-xl hover:bg-indigo-700 transition-all uppercase shadow-lg shadow-indigo-200">Confirm
+                    Supplier</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OPEN SITUATION DETAILS MODAL -->
+    <div id="open-situation-modal" class="modal-overlay fixed inset-0 z-[100] items-center justify-center p-4">
+        <div
+            class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 max-h-[80vh]">
+            <div class="p-6 bg-slate-50 border-b flex justify-between items-center">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-800 uppercase tracking-tight">Open Situation Details</h2>
+                    <p class="text-[10px] text-slate-400 uppercase tracking-widest font-black mt-1 text-blue-600">
+                        Breakdown of Outstanding Invoices</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="exportOpenSituationToExcel()"
+                        class="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-[10px] font-bold uppercase hover:bg-green-700 transition-colors shadow-sm">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Export
+                    </button>
+                    <button onclick="document.getElementById('open-situation-modal').classList.remove('active')"
+                        class="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-300 hover:text-slate-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="p-0 overflow-y-auto flex-1">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-50 sticky top-0 z-10">
+                        <tr>
+                            <th
+                                class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b">
+                                Date</th>
+                            <th
+                                class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b">
+                                Supplier</th>
+                            <th
+                                class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b">
+                                Invoice</th>
+                            <th
+                                class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b text-right">
+                                Amount</th>
+                            <th
+                                class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b text-right">
+                                Due Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="open-situation-list" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+            <div class="p-4 bg-slate-50 border-t flex justify-between items-center">
+                <span class="text-xs font-bold text-slate-500 uppercase">Total Outstanding</span>
+                <span id="open-situation-total" class="text-lg font-black text-slate-800">0.00 €</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- DELETE CONFIRMATION MODAL -->
+    <div id="delete-modal" class="modal-overlay fixed inset-0 z-[110] items-center justify-center p-4">
+        <div
+            class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-300 flex flex-col items-center text-center">
+            <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4 text-red-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800 mb-2">Delete Entry?</h3>
+            <p class="text-xs text-slate-500 mb-6">This action cannot be undone.</p>
+            <div class="flex gap-3 w-full">
+                <button onclick="closeDeleteModal()"
+                    class="flex-1 px-4 py-2 bg-slate-100 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors uppercase">Cancel</button>
+                <button onclick="confirmDelete()"
+                    class="flex-1 px-4 py-2 bg-red-600 text-white font-bold text-xs rounded-xl hover:bg-red-700 transition-colors uppercase shadow-lg shadow-red-200">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- STATUS CHANGE CONFIRMATION MODAL -->
+    <div id="status-confirm-modal" class="modal-overlay fixed inset-0 z-[110] items-center justify-center p-4">
+        <div
+            class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-300 flex flex-col items-center text-center">
+            <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mb-4 text-amber-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800 mb-2">Change Payment Status?</h3>
+            <p class="text-xs text-slate-500 mb-6">Confirm toggle for this payment component status.</p>
+            <div class="flex gap-3 w-full">
+                <button onclick="closeStatusModal()"
+                    class="flex-1 px-4 py-2 bg-slate-100 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors uppercase">Cancel</button>
+                <button onclick="confirmStatusChange()"
+                    class="flex-1 px-4 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl hover:bg-blue-700 transition-colors uppercase shadow-lg shadow-blue-200">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA STATE ---
+        let SETTINGS = {
+            LIMIT_AWB: 727272.73,
+            LIMIT_BMCI: 625000.00,
+            BANK_LIMITS: {
+                "AWB": { value: 727272.73, currency: 'EUR' },
+                "BMCI": { value: 625000.00, currency: 'EUR' }
+            },
+            SUPPLIER_LIMITS: { "GE HEALTHCARE": { value: 1500000.00, currency: 'EUR' } },
+            RATE_EUR_MAD: 10.95,
+            RATE_USD_MAD: 10.05
+        };
+        let TRACKER_CONFIG = { startMonth: 0, startYear: new Date().getFullYear(), endMonth: 'auto', endYear: 'auto' };
+        let suppliers = ["GE HEALTHCARE", "SIEMENS", "PHILIPS", "SAMSUNG HEALTHCARE"];
+        let banks = ["AWB", "BMCI"];
+
+        let idToDelete = null;
+        let statusChangeParams = null;
+
+        let data = [];
+        let editingId = null;
+
+        // --- PAGINATION STATE ---
+        let currentPage = 1;
+        const rowsPerPage = 10;
+
+        const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+        // Utility functions
+        function getAmountInEUR(amount, fromCcy) {
+            if (fromCcy === 'EUR') return amount;
+            if (fromCcy === 'MAD') return amount / SETTINGS.RATE_EUR_MAD;
+            if (fromCcy === 'USD') return (amount * SETTINGS.RATE_USD_MAD) / SETTINGS.RATE_EUR_MAD;
+            return amount;
+        }
+
+        function getInvoiceBalance(inv, sup) {
+            const invNum = String(inv || '').trim().toUpperCase();
+            const supName = String(sup || '').trim().toUpperCase();
+            if (!invNum || invNum === "N/A") return { remainder: 0, goal: 0, paid: 0 };
+            const related = data.filter(d =>
+                String(d.invoice || '').trim().toUpperCase() === invNum &&
+                String(d.supplier || '').trim().toUpperCase() === supName
+            );
+            const totalPaidSum = related.reduce((acc, entry) => acc + entry.payments.reduce((pSum, p) => pSum + p.amount, 0), 0);
+            const maxTotalInv = Math.max(...related.map(d => d.total_invoice_amount || 0));
+            const goal = maxTotalInv || 0;
+            const remainder = goal > 0 ? Math.max(0, goal - totalPaidSum) : 0;
+            return { remainder, goal, paid: totalPaidSum };
+        }
+
+        function formatCurrencyMap(map) {
+            const parts = [];
+            if (map.EUR && map.EUR > 0) parts.push(`${map.EUR.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`);
+            if (map.USD && map.USD > 0) parts.push(`${map.USD.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} $`);
+            if (map.MAD && map.MAD > 0) parts.push(`${map.MAD.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD`);
+            return parts.length > 0 ? parts.join(' / ') : '0.00 €';
+        }
+
+        function formatDateDDMMYY(isoDate) {
+            if (!isoDate) return "";
+            const parts = isoDate.split('-');
+            if (parts.length !== 3) return isoDate;
+            const [y, m, d] = parts;
+            return `${d}/${m}/${y.slice(-2)}`;
+        }
+
+        function addDays(date, days) {
+            const result = new Date(date);
+            result.setDate(result.getDate() + days);
+            return result;
+        }
+
+        function dateToInputString(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function addPaymentRow(pData = null) {
+            const container = document.getElementById('payments-list');
+            if (!container) return;
+            const rowCount = container.children.length;
+            const div = document.createElement('div');
+            div.className = "payment-row p-6 bg-slate-50/50 rounded-[1.5rem] border border-slate-100 relative animate-in slide-in-from-top-4 duration-300";
+            const uid = Math.random().toString(36).substr(2, 9);
+            const bankOptions = banks.map(b => `<option value="${b}" ${pData && pData.bank === b ? 'selected' : ''}>${b}</option>`).join('');
+            div.innerHTML = `
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="w-6 h-6 flex items-center justify-center bg-blue-100 text-blue-600 rounded-lg text-[10px] font-black">${rowCount + 1}</span>
+                        <span class="text-[9px] font-black uppercase text-slate-400 tracking-widest">Payment Component</span>
+                    </div>
+                    ${rowCount > 0 ? `<button onclick="this.closest('.payment-row').remove();" class="p-1.5 bg-red-50 text-red-400 hover:text-red-600 rounded-lg transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path d="M6 18L18 6M6 6l12 12"/></svg></button>` : ''}
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="col-span-1">
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1 px-1">Amount</label>
+                        <input type="number" class="payment-amt w-full p-2.5 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all" placeholder="0.00" value="${pData ? pData.amount : ''}">
+                    </div>
+                    <div class="col-span-1">
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1 px-1">Currency</label>
+                        <select class="payment-ccy w-full p-2.5 border border-slate-200 rounded-xl text-xs font-bold uppercase outline-none focus:ring-4 focus:ring-blue-50 transition-all">
+                            <option ${pData && pData.currency === 'EUR' ? 'selected' : ''}>EUR</option>
+                            <option ${pData && pData.currency === 'MAD' ? 'selected' : ''}>MAD</option>
+                            <option ${pData && pData.currency === 'USD' ? 'selected' : ''}>USD</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="col-span-1">
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1 px-1">Method</label>
+                        <select class="payment-type w-full p-2.5 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all">
+                            <option value="Credit Line" ${pData && pData.type === 'Credit Line' ? 'selected' : ''}>L/C (Credit Line)</option>
+                            <option value="Wire Transfer" ${pData && pData.type === 'Wire Transfer' ? 'selected' : ''}>TW (Transfer)</option>
+                            <option value="Cheque" ${pData && pData.type === 'Cheque' ? 'selected' : ''}>CHQ (Cheque)</option>
+                        </select>
+                    </div>
+                    <div class="col-span-1">
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-1 px-1">Bank</label>
+                        <select class="payment-bank w-full p-2.5 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all">
+                            ${bankOptions}
+                        </select>
+                    </div>
+                </div>
+                <div class="space-y-4 pt-4 border-t border-slate-100">
+                    <div class="space-y-1">
+                        <label class="block text-[9px] font-bold text-orange-500 uppercase px-1">Supplier Due Date</label>
+                        <div class="flex items-center gap-2">
+                            <div class="relative flex-1">
+                                <input type="date" id="sup-date-${uid}" class="payment-sup-date w-full p-2.5 pl-9 border border-orange-100 rounded-xl bg-orange-50/20 outline-none text-[10px] font-bold text-slate-700 transition-all" value="${pData ? (pData.supplier_due || '') : ''}">
+                                <svg class="w-3.5 h-3.5 absolute left-3 top-3 text-orange-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                            </div>
+                            <div class="relative">
+                                <button onclick="toggleDateTab('dd-sup-${uid}')" class="p-2.5 bg-orange-100 text-orange-600 rounded-xl font-black text-[9px] uppercase hover:bg-orange-200 transition-all">+ Days</button>
+                                <div id="dd-sup-${uid}" class="date-dropdown">
+                                    <button onclick="applyDateOffset('sup-date-${uid}', 'new-date', 0, 'dd-sup-${uid}')" class="day-option">0 Days</button>
+                                    <button onclick="applyDateOffset('sup-date-${uid}', 'new-date', 30, 'dd-sup-${uid}')" class="day-option">30 Days</button>
+                                    <button onclick="applyDateOffset('sup-date-${uid}', 'new-date', 60, 'dd-sup-${uid}')" class="day-option">60 Days</button>
+                                    <button onclick="applyDateOffset('sup-date-${uid}', 'new-date', 90, 'dd-sup-${uid}')" class="day-option">90 Days</button>
+                                    <button onclick="applyDateOffset('sup-date-${uid}', 'new-date', 110, 'dd-sup-${uid}')" class="day-option">110 Days</button>
+                                    <button onclick="applyDateOffset('sup-date-${uid}', 'new-date', 120, 'dd-sup-${uid}')" class="day-option text-orange-600 font-black">120 Days</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="block text-[9px] font-bold text-blue-500 uppercase px-1">Bank Repayment Date</label>
+                        <div class="flex items-center gap-2">
+                            <div class="relative flex-1">
+                                <input type="date" id="bank-date-${uid}" class="payment-bank-date w-full p-2.5 pl-9 border border-blue-100 rounded-xl bg-blue-50/20 outline-none text-[10px] font-bold text-slate-700 transition-all" value="${pData ? (pData.cyclo_due || '') : ''}">
+                                <svg class="w-3.5 h-3.5 absolute left-3 top-3 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                            </div>
+                            <div class="relative">
+                                <button onclick="toggleDateTab('dd-bank-${uid}')" class="p-2.5 bg-blue-100 text-blue-600 rounded-xl font-black text-[9px] uppercase hover:bg-blue-200 transition-all">+ Days</button>
+                                <div id="dd-bank-${uid}" class="date-dropdown">
+                                    <button onclick="applyDateOffset('bank-date-${uid}', 'sup-date-${uid}', 0, 'dd-bank-${uid}')" class="day-option">0 Days</button>
+                                    <button onclick="applyDateOffset('bank-date-${uid}', 'sup-date-${uid}', 30, 'dd-bank-${uid}')" class="day-option">30 Days</button>
+                                    <button onclick="applyDateOffset('bank-date-${uid}', 'sup-date-${uid}', 60, 'dd-bank-${uid}')" class="day-option">60 Days</button>
+                                    <button onclick="applyDateOffset('bank-date-${uid}', 'sup-date', 90, 'dd-bank-${uid}')" class="day-option">90 Days</button>
+                                    <button onclick="applyDateOffset('bank-date-${uid}', 'sup-date-${uid}', 110, 'dd-bank-${uid}')" class="day-option">110 Days</button>
+                                    <button onclick="applyDateOffset('bank-date-${uid}', 'sup-date-${uid}', 120, 'dd-bank-${uid}')" class="day-option text-blue-600 font-black">120 Days</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <input type="hidden" class="payment-sup-status" value="${pData ? (pData.supplier_status || 'Pending') : 'Pending'}">
+                <input type="hidden" class="payment-bank-status" value="${pData ? (pData.bank_status || 'Pending') : 'Pending'}">
+            `;
+            container.appendChild(div);
+        }
+
+        function renderTable(resetPage = false) {
+            const tbody = document.getElementById('table-body');
+            const paginationEl = document.getElementById('pagination-container');
+            if (!tbody) return;
+
+            if (resetPage) currentPage = 1;
+
+            const invF = document.getElementById('filter-invoice').value.toLowerCase(),
+                supF = document.getElementById('filter-supplier').value,
+                stBankF = document.getElementById('filter-status-bank').value,
+                stSupF = document.getElementById('filter-status-supplier').value,
+                methF = document.getElementById('filter-method').value;
+
+            tbody.innerHTML = '';
+
+            const filtered = data.filter(row => {
+                const i = String(row.invoice || '').toLowerCase().includes(invF), s = supF === 'all' || row.supplier === supF;
+                const stB = stBankF === 'all' || row.payments.some(p => p.bank_status === stBankF);
+                const stS = stSupF === 'all' || row.payments.some(p => p.supplier_status === stSupF);
+                const mk = methF === 'all' || row.payments.some(p => p.type === methF);
+                return i && s && stB && stS && mk;
+            }).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+            const totalRows = filtered.length;
+            const totalPages = Math.ceil(totalRows / rowsPerPage);
+            if (currentPage > totalPages && totalPages > 0) currentPage = totalPages;
+
+            const startIdx = (currentPage - 1) * rowsPerPage;
+            const paginatedData = filtered.slice(startIdx, startIdx + rowsPerPage);
+
+            paginatedData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = 'row-hover group';
+                const bal = getInvoiceBalance(row.invoice, row.supplier);
+                const remainder = bal.remainder;
+                let amountsHtml = row.payments.map(p => {
+                    const cur = p.currency === 'USD' ? '$' : (p.currency === 'MAD' ? 'MAD' : '€');
+                    return `<div class="py-0.5">${p.amount.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} ${cur}</div>`;
+                }).join('');
+                if (remainder > 0.01) {
+                    const curCode = row.total_invoice_currency || (row.payments[0]?.currency || 'EUR');
+                    const cur = curCode === 'USD' ? '$' : (curCode === 'MAD' ? 'MAD' : '€');
+                    amountsHtml += `<div class="py-0.5 text-red-500 font-bold border-t border-red-100 mt-1 pt-1">Unpaid: ${remainder.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} ${cur}</div>`;
+                }
+                const banksHtml = row.payments.map(p => `<div class="py-0.5">${p.bank}</div>`).join('');
+                const typesHtml = row.payments.map(p => `<div class="py-0.5">${p.type}</div>`).join('');
+                const supStatusHtml = row.payments.map((p, idx) => {
+                    let btnClass = 'bg-amber-400 text-white shadow-sm hover:bg-amber-500';
+                    if (p.supplier_status === 'Paid') btnClass = 'bg-emerald-500 text-white shadow-sm hover:bg-emerald-600';
+                    return `<div class="py-0.5"><button onclick="toggleStatus(${row.id}, 'supplier', ${idx})" class="px-2 py-0.5 rounded text-[8px] font-black uppercase ${btnClass} transition-colors w-16">${p.supplier_status || 'Pending'}</button></div>`;
+                }).join('');
+                const bankStatusHtml = row.payments.map((p, idx) => {
+                    let btnClass = 'bg-amber-400 text-white shadow-sm hover:bg-amber-500';
+                    if (p.bank_status === 'Paid') btnClass = 'bg-emerald-500 text-white shadow-sm hover:bg-emerald-600';
+                    return `<div class="py-0.5"><button onclick="toggleStatus(${row.id}, 'bank', ${idx})" class="px-2 py-0.5 rounded text-[8px] font-black uppercase ${btnClass} transition-colors w-16">${p.bank_status || 'Pending'}</button></div>`;
+                }).join('');
+                tr.innerHTML = `
+                    <td class="px-4 py-4 text-xs font-medium text-slate-500 align-top">${formatDateDDMMYY(row.date)}</td>
+                    <td class="px-4 py-4 font-bold uppercase align-top">${row.supplier}</td>
+                    <td class="px-4 py-4 font-mono text-[11px] text-slate-400 uppercase align-top">${row.invoice}</td>
+                    <td class="px-4 py-4 text-right font-black align-top flex flex-col items-end gap-0.5">${amountsHtml}</td>
+                    <td class="px-4 py-4 text-center font-bold text-slate-600 align-top"><div class="flex flex-col gap-0.5">${banksHtml}</div></td>
+                    <td class="px-4 py-4 text-center font-medium text-slate-500 text-[10px] uppercase align-top"><div class="flex flex-col gap-0.5">${typesHtml}</div></td>
+                    <td class="px-4 py-4 text-center align-top"><div class="flex flex-col items-center gap-0.5">${supStatusHtml}</div></td>
+                    <td class="px-4 py-4 text-center align-top"><div class="flex flex-col items-center gap-0.5">${bankStatusHtml}</div></td>
+                    <td class="px-4 py-4 text-center align-top">
+                        <div class="flex items-center justify-center gap-2 pt-1">
+                            <button onclick="openEntryModal(${row.id})" class="p-1.5 bg-blue-50 text-blue-500 rounded-lg hover:bg-blue-100 hover:text-blue-700 transition-colors shadow-sm"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
+                            <button onclick="deleteRow(${row.id})" class="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-100 hover:text-red-700 transition-colors shadow-sm"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                        </div>
+                    </td>`;
+                tbody.appendChild(tr);
+            });
+
+            const rangeStart = totalRows === 0 ? 0 : startIdx + 1;
+            const rangeEnd = Math.min(startIdx + rowsPerPage, totalRows);
+
+            paginationEl.innerHTML = `
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    Showing <span class="text-slate-800">${rangeStart}</span> to <span class="text-slate-800">${rangeEnd}</span> of <span class="text-slate-800">${totalRows}</span> invoices
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="changePage(-1)" ${currentPage === 1 ? 'disabled' : ''} class="px-4 py-2 bg-white border border-slate-200 rounded-lg text-[10px] font-black uppercase text-slate-400 hover:text-blue-600 hover:border-blue-500 disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:border-slate-200 transition-all flex items-center gap-2 shadow-sm">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path d="M15 19l-7-7 7-7"/></svg>
+                        Prev
+                    </button>
+                    <div class="flex items-center px-4 bg-white border border-slate-200 rounded-lg text-[10px] font-black text-blue-600 shadow-sm">
+                        ${currentPage} / ${totalPages || 1}
+                    </div>
+                    <button onclick="changePage(1)" ${currentPage >= totalPages ? 'disabled' : ''} class="px-4 py-2 bg-white border border-slate-200 rounded-lg text-[10px] font-black uppercase text-slate-400 hover:text-blue-600 hover:border-blue-500 disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:border-slate-200 transition-all flex items-center gap-2 shadow-sm">
+                        Next
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+            `;
+
+            calculateMetrics();
+        }
+
+        function changePage(delta) {
+            currentPage += delta;
+            renderTable();
+        }
+
+        function toISODate(d) {
+            if (!d) return "";
+            const date = (d instanceof Date) ? d : new Date(d);
+            if (isNaN(date.getTime())) return "";
+            const y = date.getFullYear(), m = String(date.getMonth() + 1).padStart(2, '0'), day = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
+        function openEntryModal(id = null) {
+            editingId = id;
+            const titleEl = document.getElementById('modal-title'), submitBtn = document.getElementById('modal-submit-btn'), container = document.getElementById('payments-list'), totalAmountInput = document.getElementById('new-total-amount'), totalCurrencySelect = document.getElementById('new-total-currency');
+            if (!container) return;
+            container.innerHTML = '';
+            if (id !== null) {
+                const item = data.find(d => d.id === id);
+                if (item) {
+                    titleEl.textContent = "Edit Payment Entry";
+                    submitBtn.textContent = "Update Entry";
+                    document.getElementById('new-date').value = toISODate(item.date);
+                    document.getElementById('new-supplier').value = item.supplier;
+                    document.getElementById('new-invoice').value = item.invoice;
+                    const totalSum = item.payments.reduce((sum, p) => sum + p.amount, 0);
+                    totalAmountInput.value = item.total_invoice_amount || totalSum;
+                    totalCurrencySelect.value = item.total_invoice_currency || (item.payments[0]?.currency || 'EUR');
+                    item.payments.forEach(p => addPaymentRow(p));
+                }
+            } else {
+                titleEl.textContent = "Add Payment Entry"; submitBtn.textContent = "Submit Entry";
+                document.getElementById('new-date').value = ''; document.getElementById('new-supplier').value = suppliers[0]; document.getElementById('new-invoice').value = '';
+                totalAmountInput.value = ''; totalCurrencySelect.value = 'EUR';
+                addPaymentRow();
+            }
+            document.getElementById('entry-modal').classList.add('active');
+        }
+
+        function closeEntryModal() { editingId = null; document.getElementById('entry-modal').classList.remove('active'); }
+
+        function gatherFormData() {
+            const invoiceStr = String(document.getElementById('new-invoice').value).trim().toUpperCase();
+            const totalInvoiceCurrency = document.getElementById('new-total-currency').value;
+            const paymentRows = document.querySelectorAll('.payment-row'), payments = [];
+            paymentRows.forEach(row => {
+                const amt = parseFloat(row.querySelector('.payment-amt').value) || 0;
+                if (amt !== 0) {
+                    payments.push({
+                        amount: amt, currency: row.querySelector('.payment-ccy').value || 'EUR', type: row.querySelector('.payment-type').value || 'Credit Line', bank: row.querySelector('.payment-bank').value || banks[0],
+                        supplier_status: row.querySelector('.payment-sup-status').value || 'Pending', bank_status: row.querySelector('.payment-bank-status').value || 'Pending',
+                        supplier_due: toISODate(row.querySelector('.payment-sup-date').value), cyclo_due: toISODate(row.querySelector('.payment-bank-date').value)
+                    });
+                }
+            });
+            const totalInvoiceAmount = parseFloat(document.getElementById('new-total-amount').value) || 0;
+            const currentSum = payments.reduce((sum, p) => sum + p.amount, 0);
+            const finalTotal = totalInvoiceAmount > 0 ? totalInvoiceAmount : currentSum;
+            const firstPayment = payments[0] || {};
+            return { date: toISODate(document.getElementById('new-date').value), supplier: String(document.getElementById('new-supplier').value), invoice: invoiceStr, total_invoice_amount: finalTotal, total_invoice_currency: totalInvoiceCurrency, payments, supplier_due: firstPayment.supplier_due || '', cyclo_due: firstPayment.cyclo_due || '' };
+        }
+
+        function saveNewEntry() {
+            const invoiceStr = String(document.getElementById('new-invoice').value).trim().toUpperCase();
+            if (!invoiceStr) { alert("Please enter an Invoice Number."); return; }
+            const currentData = gatherFormData();
+            if (editingId !== null) { const idx = data.findIndex(d => d.id === editingId); if (idx !== -1) data[idx] = { ...data[idx], ...currentData }; }
+            else { data.push({ id: Date.now(), ...currentData }); }
+            saveData(); closeEntryModal(); renderTable();
+        }
+
+        function clearFilters() {
+            document.getElementById('filter-invoice').value = ''; document.getElementById('filter-supplier').value = 'all'; document.getElementById('filter-status-bank').value = 'all'; document.getElementById('filter-status-supplier').value = 'all'; document.getElementById('filter-method').value = 'all';
+            renderTable(true);
+        }
+
+        function toggleStatus(id, target, index) { statusChangeParams = { id, target, index }; document.getElementById('status-confirm-modal').classList.add('active'); }
+        function closeStatusModal() { statusChangeParams = null; document.getElementById('status-confirm-modal').classList.remove('active'); }
+        function confirmStatusChange() {
+            if (!statusChangeParams) return;
+            const { id, target, index } = statusChangeParams;
+            const r = data.find(d => d.id === id);
+            if (r && r.payments[index]) {
+                if (target === 'supplier') { const current = r.payments[index].supplier_status; r.payments[index].supplier_status = (current === 'Paid') ? 'Pending' : 'Paid'; }
+                else { const current = r.payments[index].bank_status; r.payments[index].bank_status = (current === 'Paid') ? 'Pending' : 'Paid'; }
+                saveData(); renderTable();
+            }
+            closeStatusModal();
+        }
+
+        function deleteRow(id) { idToDelete = id; document.getElementById('delete-modal').classList.add('active'); }
+        function confirmDelete() { if (idToDelete !== null) { data = data.filter(d => d.id !== idToDelete); saveData(); renderTable(); } closeDeleteModal(); }
+        function closeDeleteModal() { idToDelete = null; document.getElementById('delete-modal').classList.remove('active'); }
+
+        function autoCalculateDates() {
+            const rows = document.querySelectorAll('.payment-row');
+            let hasLC = false; rows.forEach(r => { if (r.querySelector('.payment-type').value === 'Credit Line') hasLC = true; });
+            if (hasLC) {
+                const invDateStr = document.getElementById('new-date').value; if (!invDateStr) return;
+                const invDate = new Date(invDateStr), supDate = addDays(invDate, 120), bankDate = addDays(supDate, 90);
+                rows.forEach(row => {
+                    const supInput = row.querySelector('.payment-sup-date'), bankInput = row.querySelector('.payment-bank-date');
+                    if (supInput) supInput.value = dateToInputString(supDate);
+                    if (bankInput) bankInput.value = dateToInputString(bankDate);
+                });
+            }
+        }
+        function toggleDateTab(id) { const el = document.getElementById(id); if (el) { el.classList.toggle('active'); } }
+        function applyDateOffset(targetId, sourceId, days, dropdownId) {
+            const sourceEl = document.getElementById(sourceId); let sourceVal = sourceEl ? sourceEl.value : null;
+            if (sourceId === 'new-date') sourceVal = document.getElementById('new-date').value;
+            if (sourceVal) {
+                const d = new Date(sourceVal); d.setDate(d.getDate() + days);
+                const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+                document.getElementById(targetId).value = `${y}-${m}-${day}`;
+            }
+            document.getElementById(dropdownId).classList.remove('active');
+        }
+
+        function updateSettings() {
+            SETTINGS.RATE_EUR_MAD = parseFloat(document.getElementById('rate-eur-mad').value) || 10.95;
+            SETTINGS.RATE_USD_MAD = parseFloat(document.getElementById('rate-usd-mad').value) || 10.05;
+            saveData(); calculateMetrics();
+        }
+
+        function openConfigModal() { renderConfigLimits(); renderManageLists(); quickConvert(); document.getElementById('config-modal').classList.add('active'); }
+
+        function renderConfigLimits() {
+            populateTrackerSelectors(); loadBankLimit(); loadSupplierLimit();
+        }
+
+        function loadBankLimit() {
+            const select = document.getElementById('config-bank-select'), input = document.getElementById('config-bank-value'), ccySelect = document.getElementById('config-bank-currency');
+            if (!select || !input || !ccySelect) return;
+            const bank = select.value, limitData = (SETTINGS.BANK_LIMITS && SETTINGS.BANK_LIMITS[bank]) ? SETTINGS.BANK_LIMITS[bank] : { value: 0, currency: 'EUR' };
+            if (typeof limitData === 'object') { input.value = limitData.value; ccySelect.value = limitData.currency || 'EUR'; } else { input.value = limitData || 0; ccySelect.value = 'EUR'; }
+        }
+
+        function saveBankLimit() {
+            const select = document.getElementById('config-bank-select'), input = document.getElementById('config-bank-value'), ccySelect = document.getElementById('config-bank-currency');
+            if (!select || !input || !ccySelect) return;
+            const bank = select.value, val = parseFloat(input.value) || 0, ccy = ccySelect.value;
+            if (!SETTINGS.BANK_LIMITS) SETTINGS.BANK_LIMITS = {};
+            SETTINGS.BANK_LIMITS[bank] = { value: val, currency: ccy };
+            saveData(); calculateMetrics();
+        }
+
+        function renderManageLists() {
+            const supplierContainer = document.getElementById('supplier-list-managed'), bankContainer = document.getElementById('bank-list-managed');
+            if (!supplierContainer || !bankContainer) return;
+            document.getElementById('supplier-count-badge').textContent = suppliers.length;
+            document.getElementById('bank-count-badge').textContent = banks.length;
+            supplierContainer.innerHTML = suppliers.map(s => `
+                <div class="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-100 group hover:border-indigo-200 transition-all">
+                    <span class="text-[10px] font-bold text-slate-700 uppercase">${s}</span>
+                    <button onclick="deleteEntity('supplier', '${s}')" class="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                </div>
+            `).join('');
+            bankContainer.innerHTML = banks.map(b => `
+                <div class="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-100 group hover:border-blue-200 transition-all">
+                    <span class="text-[10px] font-bold text-slate-700 uppercase">${b}</span>
+                    <button onclick="deleteEntity('bank', '${b}')" class="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                </div>
+            `).join('');
+        }
+
+        function deleteEntity(type, name) {
+            if (!name) return;
+            if (type === 'supplier') { suppliers = suppliers.filter(s => s !== name); if (SETTINGS.SUPPLIER_LIMITS) delete SETTINGS.SUPPLIER_LIMITS[name]; }
+            else { banks = banks.filter(b => b !== name); if (SETTINGS.BANK_LIMITS) delete SETTINGS.BANK_LIMITS[name]; }
+            saveData(); calculateMetrics(); populateTrackerSelectors(); renderManageLists(); renderConfigLimits();
+        }
+
+        function closeConfigModal() { document.getElementById('config-modal').classList.remove('active'); }
+        function switchPage(pageId) {
+            const viewDashboard = document.getElementById('view-dashboard'), viewOverall = document.getElementById('view-overall'), btnDashboard = document.getElementById('btn-dashboard'), btnOverall = document.getElementById('btn-overall');
+            if (pageId === 'dashboard') { viewDashboard.classList.remove('hidden'); viewOverall.classList.add('hidden'); btnDashboard.classList.add('bg-white', 'text-blue-600', 'shadow-sm'); btnDashboard.classList.remove('text-slate-500', 'hover:bg-white/50'); btnOverall.classList.remove('bg-white', 'text-blue-600', 'shadow-sm'); btnOverall.classList.add('text-slate-500', 'hover:bg-white/50'); }
+            else { viewDashboard.classList.add('hidden'); viewOverall.classList.remove('hidden'); btnOverall.classList.add('white', 'text-blue-600', 'shadow-sm'); btnOverall.classList.remove('text-slate-500', 'hover:bg-white/50'); btnDashboard.classList.remove('bg-white', 'text-blue-600', 'shadow-sm'); btnDashboard.classList.add('text-slate-500', 'hover:bg-white/50'); calculateMetrics(); renderQuarterlyBalance(); }
+        }
+        function scrollTracker(dir) { const tracker = document.getElementById('month-tracker'), card = tracker.querySelector('.month-card'); if (card) { const cardWidth = card.offsetWidth, gap = 16; tracker.scrollBy({ left: (cardWidth + gap) * (dir * 3), behavior: 'smooth' }); } }
+        function scrollToToday() { const tracker = document.getElementById('month-tracker'); if (!tracker) return; const todayCard = tracker.querySelector('.is-today'); if (todayCard) { const currentScroll = tracker.scrollLeft, cardRect = todayCard.getBoundingClientRect(), trackerRect = tracker.getBoundingClientRect(), relativeOffset = cardRect.left - trackerRect.left; tracker.scrollTo({ left: currentScroll + relativeOffset, behavior: 'smooth' }); } }
+        function toggleTrackerRangeTab() { document.getElementById('tracker-range-tab').classList.toggle('active'); }
+        async function syncLiveRates() {
+            const btn = document.getElementById('sync-btn'); if (!btn) return; btn.classList.add('syncing');
+            try {
+                const response = await fetch('https://open.er-api.com/v6/latest/EUR'); if (!response.ok) throw new Error('Offline');
+                const result = await response.json();
+                if (result.result === 'success') {
+                    SETTINGS.RATE_EUR_MAD = result.rates.MAD; SETTINGS.RATE_USD_MAD = result.rates.MAD / result.rates.USD;
+                    document.getElementById('rate-eur-mad').value = SETTINGS.RATE_EUR_MAD.toFixed(2); document.getElementById('rate-usd-mad').value = SETTINGS.RATE_USD_MAD.toFixed(2);
+                    const now = new Date(), timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), syncLabel = document.getElementById('last-sync');
+                    if (syncLabel) { syncLabel.textContent = `Synced · ${timeStr}`; syncLabel.className = "text-[9px] text-emerald-500 uppercase font-black text-right pt-2 border-t border-emerald-50 animate-pulse"; setTimeout(() => syncLabel.classList.remove('animate-pulse'), 2000); }
+                    updateSettings();
+                }
+            } catch (e) { const syncLabel = document.getElementById('last-sync'); if (syncLabel) { syncLabel.textContent = "Feed Offline"; syncLabel.className = "text-[9px] text-slate-400 uppercase font-black text-right pt-2 border-t border-slate-50"; } }
+            btn.classList.remove('syncing');
+        }
+        function quickConvert() {
+            const val = parseFloat(document.getElementById('convert-input').value) || 0, from = document.getElementById('convert-from').value, to = document.getElementById('convert-to').value;
+            let madVal = (from === 'MAD') ? val : ((from === 'EUR') ? val * SETTINGS.RATE_EUR_MAD : val * SETTINGS.RATE_USD_MAD);
+            let targetVal = (to === 'MAD') ? madVal : ((to === 'EUR') ? madVal / SETTINGS.RATE_EUR_MAD : madVal / SETTINGS.RATE_USD_MAD);
+            document.getElementById('convert-result-val').textContent = targetVal.toLocaleString('fr-FR', { minimumFractionDigits: 2 });
+        }
+        function updateTrackerConfig() {
+            TRACKER_CONFIG.startMonth = parseInt(document.getElementById('start-month').value); TRACKER_CONFIG.startYear = parseInt(document.getElementById('start-year').value);
+            const em = document.getElementById('end-month').value; TRACKER_CONFIG.endMonth = em === 'auto' ? 'auto' : parseInt(em);
+            const ey = document.getElementById('end-year').value; TRACKER_CONFIG.endYear = ey === 'auto' ? 'auto' : parseInt(ey);
+            renderMonthlyOutlook();
+        }
+        function setQuickRange(mode) {
+            const now = new Date();
+            if (mode === 'year') { TRACKER_CONFIG.startMonth = 0; TRACKER_CONFIG.startYear = now.getFullYear(); TRACKER_CONFIG.endMonth = 11; TRACKER_CONFIG.endYear = now.getFullYear(); }
+            else { TRACKER_CONFIG.startMonth = now.getMonth(); TRACKER_CONFIG.startYear = now.getFullYear(); TRACKER_CONFIG.endMonth = 'auto'; TRACKER_CONFIG.endYear = 'auto'; }
+            populateTrackerSelectors(); renderMonthlyOutlook();
+        }
+        function populateTrackerSelectors() {
+            const currentYear = new Date().getFullYear(), dynamicSuppliers = [...new Set([...suppliers, ...data.map(d => d.supplier)])].sort();
+            const dynamicBanks = [...new Set([...banks, ...data.flatMap(d => d.payments.map(p => p.bank))])].sort();
+            document.getElementById('start-month').innerHTML = MONTHS.map((m, i) => `<option value="${i}" ${i === TRACKER_CONFIG.startMonth ? 'selected' : ''}>${m}</option>`).join('');
+            document.getElementById('end-month').innerHTML = '<option value="auto">Auto</option>' + MONTHS.map((m, i) => `<option value="${i}" ${i === TRACKER_CONFIG.endMonth ? 'selected' : ''}>${m}</option>`).join('');
+            let syHTML = ''; for (let y = currentYear - 5; y <= currentYear + 10; y++) syHTML += `<option value="${y}" ${y === TRACKER_CONFIG.startYear ? 'selected' : ''}>${y}</option>`; document.getElementById('start-year').innerHTML = syHTML;
+            let eyHTML = '<option value="auto">Auto (Endless)</option>'; for (let y = currentYear; y <= currentYear + 15; y++) eyHTML += `<option value="${y}" ${y === TRACKER_CONFIG.endYear ? 'selected' : ''}>${y}</option>`; document.getElementById('end-year').innerHTML = eyHTML;
+            const qbYearSelect = document.getElementById('ge-balance-year-select'); if (qbYearSelect) { const prev = qbYearSelect.value; qbYearSelect.innerHTML = ''; for (let y = currentYear - 1; y <= currentYear + 10; y++) qbYearSelect.innerHTML += `<option value="${y}">${y}</option>`; qbYearSelect.value = prev || currentYear; }
+            const qbSuppSelect = document.getElementById('quarterly-balance-supplier-select'); if (qbSuppSelect) { const prev = qbSuppSelect.value; qbSuppSelect.innerHTML = '<option value="all">All Vendors</option>'; dynamicSuppliers.forEach(s => qbSuppSelect.innerHTML += `<option value="${s}">${s}</option>`); qbSuppSelect.value = prev || 'all'; }
+            const situationSuppSelect = document.getElementById('situation-supplier-select'); if (situationSuppSelect) { const prev = situationSuppSelect.value; situationSuppSelect.innerHTML = '<option value="all">Combined (All Vendors)</option>'; dynamicSuppliers.forEach(s => situationSuppSelect.innerHTML += `<option value="${s}">${s}</option>`); situationSuppSelect.value = prev || 'all'; }
+            const situationYearSelect = document.getElementById('situation-year-select'); if (situationYearSelect) { const prev = situationYearSelect.value; situationYearSelect.innerHTML = '<option value="all">All Time</option>'; for (let y = currentYear - 5; y <= currentYear + 5; y++) situationYearSelect.innerHTML += `<option value="${y}">${y}</option>`; situationYearSelect.value = prev || 'all'; }
+            const mainFilterSelect = document.getElementById('filter-supplier'); if (mainFilterSelect) { const prev = mainFilterSelect.value; mainFilterSelect.innerHTML = '<option value="all">All Suppliers</option>'; dynamicSuppliers.forEach(s => mainFilterSelect.innerHTML += `<option value="${s}">${s}</option>`); mainFilterSelect.value = prev || 'all'; }
+            const modalSuppSelect = document.getElementById('new-supplier'); if (modalSuppSelect) modalSuppSelect.innerHTML = dynamicSuppliers.map(s => `<option value="${s}">${s}</option>`).join('');
+            const configSuppSelect = document.getElementById('config-limit-supplier'), configLimitCcy = document.getElementById('config-limit-currency'); if (configSuppSelect) { const prev = configSuppSelect.value; configSuppSelect.innerHTML = ''; dynamicSuppliers.forEach(s => configSuppSelect.innerHTML += `<option value="${s}">${s}</option>`); configSuppSelect.value = (prev && dynamicSuppliers.includes(prev)) ? prev : (dynamicSuppliers[0] || ''); if (configLimitCcy) configLimitCcy.innerHTML = ['EUR', 'MAD', 'USD'].map(c => `<option value="${c}">${c}</option>`).join(''); loadSupplierLimit(); }
+            const configBankSelect = document.getElementById('config-bank-select'), configBankCcy = document.getElementById('config-bank-currency');
+            if (configBankSelect) {
+                const prevBank = configBankSelect.value;
+                configBankSelect.innerHTML = '';
+                dynamicBanks.forEach(b => configBankSelect.innerHTML += `<option value="${b}">${b}</option>`);
+                configBankSelect.value = (prevBank && dynamicBanks.includes(prevBank)) ? prevBank : (dynamicBanks[0] || '');
+                if (configBankCcy) configBankCcy.innerHTML = ['EUR', 'MAD', 'USD'].map(c => `<option value="${c}">${c}</option>`).join('');
+            }
+            const convFrom = document.getElementById('convert-from'), convTo = document.getElementById('convert-to');
+            if (convFrom && convTo) {
+                const currs = ['EUR', 'MAD', 'USD'];
+                convFrom.innerHTML = currs.map(c => `<option value="${c}" class="text-slate-900">${c}</option>`).join('');
+                convTo.innerHTML = currs.map(c => `<option value="${c}" class="text-slate-900" ${c === 'MAD' ? 'selected' : ''}>${c}</option>`).join('');
+            }
+        }
+        function loadSupplierLimit() {
+            const select = document.getElementById('config-limit-supplier'), input = document.getElementById('config-limit-value'), ccySelect = document.getElementById('config-limit-currency');
+            if (!select || !input || !ccySelect) return; const supplier = select.value, limitData = (SETTINGS.SUPPLIER_LIMITS && SETTINGS.SUPPLIER_LIMITS[supplier]) ? SETTINGS.SUPPLIER_LIMITS[supplier] : null;
+            if (limitData && typeof limitData === 'object') { input.value = limitData.value; ccySelect.value = limitData.currency || 'EUR'; } else { input.value = limitData || 0; ccySelect.value = 'EUR'; }
+        }
+        function saveSupplierLimit() {
+            const select = document.getElementById('config-limit-supplier'), input = document.getElementById('config-limit-value'), ccySelect = document.getElementById('config-limit-currency');
+            if (!select || !input || !ccySelect) return; const supplier = select.value, val = parseFloat(input.value) || 0, ccy = ccySelect.value;
+            if (!SETTINGS.SUPPLIER_LIMITS) SETTINGS.SUPPLIER_LIMITS = {}; SETTINGS.SUPPLIER_LIMITS[supplier] = { value: val, currency: ccy };
+            saveData(); calculateMetrics();
+        }
+        function addEntity(type) {
+            const inputId = type === 'supplier' ? 'new-supplier-input' : 'new-bank-input', val = document.getElementById(inputId).value.trim().toUpperCase(); if (!val) return;
+            if (type === 'supplier') { document.getElementById('confirm-supplier-name').value = val; document.getElementById('confirm-supplier-limit').value = ""; document.getElementById('confirm-supplier-limit-currency').value = "EUR"; document.getElementById('supplier-confirm-modal').classList.add('active'); }
+            else { document.getElementById('confirm-bank-name').value = val; document.getElementById('confirm-bank-limit').value = ""; document.getElementById('confirm-bank-limit-currency').value = "EUR"; document.getElementById('bank-confirm-modal').classList.add('active'); }
+        }
+        function confirmAddBank() {
+            const name = document.getElementById('confirm-bank-name').value.trim().toUpperCase(), limitVal = parseFloat(document.getElementById('confirm-bank-limit').value) || 0, limitCcy = document.getElementById('confirm-bank-limit-currency').value;
+            if (!name) return;
+            if (!banks.includes(name)) { banks.push(name); if (!SETTINGS.BANK_LIMITS) SETTINGS.BANK_LIMITS = {}; SETTINGS.BANK_LIMITS[name] = { value: limitVal, currency: limitCcy }; saveData(); calculateMetrics(); populateTrackerSelectors(); renderManageLists(); renderConfigLimits(); document.getElementById('new-bank-input').value = ""; }
+            document.getElementById('bank-confirm-modal').classList.remove('active');
+        }
+        function confirmAddSupplier() {
+            const name = document.getElementById('confirm-supplier-name').value.trim().toUpperCase(), limitVal = parseFloat(document.getElementById('confirm-supplier-limit').value) || 0, limitCcy = document.getElementById('confirm-supplier-limit-currency').value;
+            if (!name) return;
+            if (!suppliers.includes(name)) { suppliers.push(name); if (!SETTINGS.SUPPLIER_LIMITS) SETTINGS.SUPPLIER_LIMITS = {}; SETTINGS.SUPPLIER_LIMITS[name] = { value: limitVal, currency: limitCcy }; saveData(); calculateMetrics(); populateTrackerSelectors(); renderManageLists(); renderConfigLimits(); document.getElementById('new-supplier-input').value = ""; }
+            document.getElementById('supplier-confirm-modal').classList.remove('active');
+        }
+        function renderMonthlyOutlook() {
+            const container = document.getElementById('month-tracker'); if (!container) return; const currentScroll = container.scrollLeft; container.innerHTML = '';
+            const startDate = new Date(TRACKER_CONFIG.startYear, TRACKER_CONFIG.startMonth, 1), now = new Date();
+            let maxDue; if (TRACKER_CONFIG.endYear === 'auto') { maxDue = new Date(now.getFullYear(), now.getMonth() + 12, 1); data.forEach(row => { if (row.cyclo_due) { const d = new Date(row.cyclo_due); if (d > maxDue) maxDue = new Date(d.getFullYear(), d.getMonth() + 3, 1); } }); } else { const em = TRACKER_CONFIG.endMonth === 'auto' ? 11 : TRACKER_CONFIG.endMonth; maxDue = new Date(TRACKER_CONFIG.endYear, em, 31); }
+            const outlook = []; let currentLoop = new Date(startDate); let loopGuard = 0;
+            while (currentLoop <= maxDue && loopGuard < 500) { loopGuard++; outlook.push({ month: currentLoop.getMonth(), year: currentLoop.getFullYear(), label: currentLoop.toLocaleString('default', { month: 'short' }), isToday: currentLoop.getMonth() === now.getMonth() && currentLoop.getFullYear() === now.getFullYear(), totalMap: { EUR: 0, USD: 0, MAD: 0 }, bankStats: {} }); currentLoop.setMonth(currentLoop.getMonth() + 1); }
+            const rangeTextEl = document.getElementById('display-range-text'); if (rangeTextEl) { const startMName = MONTHS[TRACKER_CONFIG.startMonth], startY = TRACKER_CONFIG.startYear; if (TRACKER_CONFIG.endYear === 'auto') rangeTextEl.textContent = `${startMName} ${startY} onwards`; else { const endMName = MONTHS[TRACKER_CONFIG.endMonth === 'auto' ? 11 : TRACKER_CONFIG.endMonth], endY = TRACKER_CONFIG.endYear; rangeTextEl.textContent = `${startMName} ${startY} - ${endMName} ${endY}`; } }
+            data.forEach(row => { row.payments.forEach(p => { const dueDateStr = p.cyclo_due || row.cyclo_due; if (dueDateStr) { const due = new Date(dueDateStr), target = outlook.find(o => o.month === due.getMonth() && o.year === due.getFullYear()); if (target) { if (p.bank_status !== 'Paid') { const bName = p.bank || 'Other'; if (!target.bankStats[bName]) target.bankStats[bName] = { details: {} }; if (!target.bankStats[bName].details[p.type]) target.bankStats[bName].details[p.type] = { EUR: 0, USD: 0, MAD: 0 }; target.bankStats[bName].details[p.type][p.currency] += p.amount; target.totalMap[p.currency] += p.amount; } } } }); });
+            const stdTypes = ['Credit Line', 'Wire Transfer'], stdBanks = banks;
+            const renderDetails = (detailsObj, colorClass) => { return stdTypes.map(type => { const map = (detailsObj && detailsObj[type]) ? detailsObj[type] : { EUR: 0, USD: 0, MAD: 0 }, valStr = formatCurrencyMap(map), isZero = valStr === '0.00 €', valueClass = isZero ? 'text-slate-300 font-medium text-xs' : `font-bold ${colorClass} text-sm`, labelClass = isZero ? 'text-slate-300' : 'text-slate-500 font-bold'; let label = type, icon = ''; if (type === 'Credit Line') { label = 'L/C'; icon = `<svg class="w-4 h-4 ${isZero ? 'text-slate-200' : 'text-slate-400'}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>`; } if (type === 'Wire Transfer') { label = 'TW'; icon = `<svg class="w-4 h-4 ${isZero ? 'text-slate-200' : 'text-slate-400'}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>`; } return `<div class="flex justify-between items-center py-1.5"><div class="flex items-center gap-2">${icon}<span class="text-[11px] uppercase tracking-wider ${labelClass}">${label}</span></div><span class="${valueClass}">${valStr}</span></div>`; }).join(''); };
+            outlook.forEach(o => {
+                const card = document.createElement('div'), baseClasses = 'bg-white border-slate-100 hover:border-slate-300 hover:shadow-lg hover:-translate-y-1';
+                card.className = `month-card group flex flex-col justify-between transition-all duration-300 ${baseClasses} ${o.isToday ? 'is-today' : ''}`;
+                let banksHtml = stdBanks.map(bName => {
+                    const bData = o.bankStats[bName] || { details: {} };
+                    let colorClass = 'text-slate-700', bgClass = 'bg-slate-50', borderClass = 'border-slate-100', dotColor = 'bg-slate-400';
+                    if (bName === 'AWB') { colorClass = 'text-blue-700'; bgClass = 'bg-blue-50/50'; borderClass = 'border-blue-100'; dotColor = 'bg-blue-500'; } else if (bName === 'BMCI') { colorClass = 'text-emerald-700'; bgClass = 'bg-emerald-50/50'; borderClass = 'border-emerald-100'; dotColor = 'bg-emerald-500'; }
+                    const detailHtml = renderDetails(bData.details, colorClass); return `<div class="rounded-2xl ${bgClass} border ${borderClass} p-3 mb-3 last:mb-0"><div class="text-[11px] font-black ${colorClass} uppercase tracking-widest mb-2 opacity-80 flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full ${dotColor}"></div>${bName}</div><div class="flex flex-col gap-0.5">${detailHtml}</div></div>`;
+                }).join('');
+                card.innerHTML = `<div><div class="flex flex-col items-center justify-center mb-5 pb-4 border-b border-dashed border-slate-100 relative"><span class="text-xl font-black uppercase tracking-widest text-slate-600">${o.label}</span><span class="text-xs font-bold text-slate-400 mt-0.5">${o.year}</span>${o.isToday ? '<span class="absolute top-0 right-0 text-[8px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase tracking-wider">Current</span>' : ''}</div><div class="space-y-2">${banksHtml}</div></div><div class="pt-4 mt-2 border-t border-slate-100 bg-slate-50/50 -mx-6 -mb-6 p-4"><div class="flex justify-between items-center"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Exposure</span><span class="text-sm font-black text-slate-800 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm">${formatCurrencyMap(o.totalMap)}</span></div></div>`;
+                container.appendChild(card);
+            });
+            container.scrollLeft = currentScroll;
+        }
+        function renderQuarterlyBalance() {
+            const container = document.getElementById('quarterly-balance-grid'); if (!container) return;
+            const selectYear = document.getElementById('ge-balance-year-select'), selectSupp = document.getElementById('quarterly-balance-supplier-select'); if (!selectYear || !selectSupp) return;
+            const targetYear = parseInt(selectYear.value || new Date().getFullYear()), targetSupp = selectSupp.value;
+            container.innerHTML = ''; const now = new Date(), quarters = [];
+            for (let q = 1; q <= 4; q++) quarters.push({ year: targetYear, quarter: q, ordersMap: { EUR: 0, USD: 0, MAD: 0 }, paymentsMap: { EUR: 0, USD: 0, MAD: 0 }, balanceEUR: 0 });
+            data.forEach(row => {
+                if (targetSupp !== 'all' && row.supplier !== targetSupp) return; const rowTotalEUR = row.payments.reduce((acc, p) => acc + getAmountInEUR(p.amount, p.currency), 0);
+                const orderDate = new Date(row.date); if (orderDate.getFullYear() === targetYear) { const oQuarter = Math.floor(orderDate.getMonth() / 3) + 1, oTarget = quarters.find(q => q.quarter === oQuarter); if (oTarget) { row.payments.forEach(p => oTarget.ordersMap[p.currency] += p.amount); oTarget.balanceEUR += rowTotalEUR; } }
+                if (row.cyclo_due) { const payDate = new Date(row.cyclo_due); if (payDate.getFullYear() === targetYear) { const pQuarter = Math.floor(payDate.getMonth() / 3) + 1, pTarget = quarters.find(q => q.quarter === pQuarter); if (pTarget) { row.payments.forEach(p => pTarget.paymentsMap[p.currency] += p.amount); pTarget.balanceEUR -= rowTotalEUR; } } }
+            });
+            quarters.forEach(q => {
+                const card = document.createElement('div'), isCurrent = q.year === now.getFullYear() && q.quarter === Math.floor(now.getMonth() / 3) + 1; card.className = `p-5 rounded-2xl border-2 transition-all ${isCurrent ? 'border-blue-500 bg-white ring-4 ring-blue-50' : 'border-slate-100 bg-white shadow-sm hover:border-slate-300'}`;
+                const balanceColor = q.balanceEUR >= 0 ? 'text-emerald-600' : 'text-orange-600';
+                card.innerHTML = `<div class="flex justify-between items-center mb-4"><span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Q${q.quarter} ${q.year}</span>${isCurrent ? '<span class="text-[8px] font-black bg-blue-600 text-white px-2 py-0.5 rounded-full uppercase">Current</span>' : ''}</div><div class="space-y-3"><div class="flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase mb-1">Orders placed</span><span class="text-[11px] font-black text-slate-700">${formatCurrencyMap(q.ordersMap)}</span></div><div class="flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase mb-1">Payments due</span><span class="text-[11px] font-black text-blue-600">${formatCurrencyMap(q.paymentsMap)}</span></div><div class="pt-3 border-t border-slate-50 flex justify-between items-center"><span class="text-[9px] font-black text-slate-400 uppercase">Balance (Base EUR)</span><span class="text-[13px] font-black ${balanceColor}">${q.balanceEUR >= 0 ? '+' : ''}${q.balanceEUR.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €</span></div></div>`;
+                container.appendChild(card);
+            });
+        }
+        function calculateMetrics() {
+            const bankTotals = {}; let openLC = 0, next = null, globalPendingMap = { EUR: 0, USD: 0, MAD: 0 }, globalPaidMap = { EUR: 0, USD: 0, MAD: 0 }, globalPendingCount = 0, globalPaidCount = 0;
+            const situationSelect = document.getElementById('situation-supplier-select'), selectedGlobalSupplier = situationSelect ? situationSelect.value : 'all';
+            const sitYearSelect = document.getElementById('situation-year-select'), selectedSitYear = sitYearSelect ? sitYearSelect.value : 'all';
+            const processedRemainderInvoices = new Set();
+            banks.forEach(b => bankTotals[b] = 0);
+            data.forEach(row => {
+                const rowDate = new Date(row.date), isYearMatch = selectedSitYear === 'all' || rowDate.getFullYear() == selectedSitYear, isTargetGlobal = (selectedGlobalSupplier === 'all' || row.supplier === selectedGlobalSupplier) && isYearMatch;
+                row.payments.forEach(p => {
+                    const valEUR = getAmountInEUR(p.amount, p.currency);
+                    if (p.bank_status !== 'Paid') { if (p.type === 'Credit Line') { if (bankTotals[p.bank] !== undefined) bankTotals[p.bank] += valEUR; openLC++; } if (row.cyclo_due && (!next || new Date(row.cyclo_due) < new Date(next))) next = row.cyclo_due; }
+                    if (isTargetGlobal) { if (p.supplier_status !== 'Paid') { globalPendingMap[p.currency] += p.amount; globalPendingCount++; } else { globalPaidMap[p.currency] += p.amount; globalPaidCount++; } }
+                });
+                if (isTargetGlobal) { const invKey = `${String(row.invoice).trim().toUpperCase()}|${String(row.supplier).trim().toUpperCase()}`; if (!processedRemainderInvoices.has(invKey)) { const bal = getInvoiceBalance(row.invoice, row.supplier); if (bal.remainder > 0.01) { const cCode = row.total_invoice_currency || (row.payments[0]?.currency || 'EUR'); globalPendingMap[cCode] += bal.remainder; } processedRemainderInvoices.add(invKey); } }
+            });
+            const cardContainer = document.getElementById('bank-cards-container');
+            if (cardContainer) {
+                cardContainer.innerHTML = ''; let totalUsedEUR = 0, totalLimitAvailableEUR = 0;
+                banks.forEach(bank => {
+                    const bankLimitData = SETTINGS.BANK_LIMITS[bank] || { value: 0, currency: 'EUR' };
+                    let limitVal = 0, limitCcy = 'EUR'; if (typeof bankLimitData === 'object') { limitVal = bankLimitData.value; limitCcy = bankLimitData.currency || 'EUR'; } else { limitVal = bankLimitData || 0; }
+                    const usedEUR = bankTotals[bank] || 0; totalUsedEUR += usedEUR; totalLimitAvailableEUR += getAmountInEUR(limitVal, limitCcy);
+                    let usedInLimitCcy = (limitCcy === 'MAD') ? usedEUR * SETTINGS.RATE_EUR_MAD : (limitCcy === 'USD' ? (usedEUR * SETTINGS.RATE_EUR_MAD) / SETTINGS.RATE_USD_MAD : usedEUR);
+                    const left = limitVal - usedInLimitCcy, pct = limitVal > 0 ? (usedInLimitCcy / limitVal) * 100 : 0, symbol = limitCcy === 'USD' ? '$' : (limitCcy === 'MAD' ? 'MAD' : '€');
+                    const status = usedInLimitCcy > limitVal ? 'EXCEEDED' : 'OK', statusClass = usedInLimitCcy > limitVal ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700';
+                    const card = document.createElement('div'); card.className = "bg-white p-6 rounded-xl shadow-sm border border-slate-200";
+                    card.innerHTML = `<div class="flex justify-between items-center mb-2"><span class="text-slate-500 font-semibold text-sm uppercase tracking-wider">${bank}</span><div class="flex items-center gap-2"><span class="text-[10px] font-bold text-slate-400">${pct.toFixed(1)}%</span><span class="text-[10px] px-2 py-0.5 rounded ${statusClass} font-bold">${status}</span></div></div><div class="text-3xl font-bold mb-1">${usedInLimitCcy.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} ${symbol}</div><div class="flex justify-between items-center mb-4"><div class="text-[10px] text-slate-400 uppercase font-black">of ${limitVal.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} ${symbol}</div><div class="text-xs font-bold text-slate-500">Left: <span class="${left < 0 ? 'text-red-600' : 'text-blue-600'}">${left.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} ${symbol}</span></div></div><div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden"><div class="${usedInLimitCcy > limitVal ? 'bg-red-600' : 'bg-blue-600'} h-full transition-width" style="width: ${Math.min(pct, 100)}%"></div></div>`;
+                    cardContainer.appendChild(card);
+                });
+                const totalCard = document.createElement('div'); totalCard.className = "bg-blue-950 text-white p-6 rounded-xl shadow-xl";
+                totalCard.innerHTML = `<span class="text-blue-300 font-semibold text-sm uppercase tracking-wider">Total Bank Debt (EUR)</span><div class="text-3xl font-bold mt-2">${totalUsedEUR.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</div><div class="text-xs font-bold text-blue-400 mb-4 uppercase tracking-tighter">Available Bank Credit: <span class="text-white text-sm">${(totalLimitAvailableEUR - totalUsedEUR).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</span></div><div class="mt-4 flex gap-4 text-center border-t border-blue-900 pt-4"><div class="flex-1"><div class="text-lg font-bold">${openLC}</div><div class="text-[10px] uppercase text-blue-400 font-bold">Open L/C</div></div><div class="flex-1 border-l border-blue-800"><div class="text-lg font-bold text-amber-400">${next ? formatDateDDMMYY(next) : '-'}</div><div class="text-[10px] uppercase text-blue-400 font-bold">Next Repayment</div></div></div>`;
+                cardContainer.appendChild(totalCard);
+                const globalAlert = document.getElementById('global-alert'); if (globalAlert) (totalUsedEUR > totalLimitAvailableEUR) ? globalAlert.classList.remove('hidden') : globalAlert.classList.add('hidden');
+            }
+            document.getElementById('global-open-situation').textContent = formatCurrencyMap(globalPendingMap); document.getElementById('global-total-paid').textContent = formatCurrencyMap(globalPaidMap);
+            document.getElementById('global-open-count').textContent = `${globalPendingCount} items`; document.getElementById('global-paid-count').textContent = `${globalPaidCount} items`;
+            const limitSection = document.getElementById('global-limit-section'); let activeLimitRaw = (selectedGlobalSupplier !== 'all') ? (SETTINGS.SUPPLIER_LIMITS?.[selectedGlobalSupplier]) : null;
+            let limitVal = 0, limitCcy = 'EUR'; if (activeLimitRaw) { if (typeof activeLimitRaw === 'object') { limitVal = activeLimitRaw.value; limitCcy = activeLimitRaw.currency || 'EUR'; } else { limitVal = activeLimitRaw; } }
+            if (limitVal > 0) {
+                limitSection.classList.remove('hidden'); const totalOpenEUR = Object.keys(globalPendingMap).reduce((s, c) => s + getAmountInEUR(globalPendingMap[c], c), 0);
+                let usage = (limitCcy === 'MAD') ? totalOpenEUR * SETTINGS.RATE_EUR_MAD : (limitCcy === 'USD' ? (totalOpenEUR * SETTINGS.RATE_EUR_MAD) / SETTINGS.RATE_USD_MAD : totalOpenEUR);
+                const left = limitVal - usage, pct = (usage / limitVal) * 100, symbol = limitCcy === 'USD' ? '$' : (limitCcy === 'MAD' ? 'MAD' : '€');
+                document.getElementById('global-limit-val').textContent = 'of ' + limitVal.toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' ' + symbol;
+                document.getElementById('global-limit-left').textContent = left.toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' ' + symbol; document.getElementById('global-limit-bar').style.width = Math.min(pct, 100) + '%';
+                document.getElementById('global-limit-left').className = left >= 0 ? 'text-[9px] font-black text-emerald-600' : 'text-[9px] font-black text-red-600';
+                document.getElementById('global-limit-bar').className = left >= 0 ? 'bg-blue-500 h-full' : 'bg-red-500 h-full';
+            } else { limitSection.classList.add('hidden'); } renderMonthlyOutlook(); renderQuarterlyBalance();
+        }
+        function showOpenSituationDetails() {
+            const situationSelect = document.getElementById('situation-supplier-select'), sitYearSelect = document.getElementById('situation-year-select'), container = document.getElementById('open-situation-list'); if (!container) return;
+            const selSupp = situationSelect ? situationSelect.value : 'all', selYear = sitYearSelect ? sitYearSelect.value : 'all'; container.innerHTML = ''; let totalEUR = 0; const processedRemainderInvoices = new Set();
+            data.forEach(row => {
+                const rowDate = new Date(row.date), rowYear = rowDate.getFullYear(), isTarget = (selSupp === 'all' || row.supplier === selSupp) && (selYear === 'all' || rowYear == selYear);
+                if (isTarget) {
+                    const pending = row.payments.filter(p => p.supplier_status !== 'Paid');
+                    pending.forEach(p => { totalEUR += getAmountInEUR(p.amount, p.currency); const tr = document.createElement('tr'); tr.className = "hover:bg-slate-50 transition-colors"; tr.innerHTML = `<td class="py-3 px-4 text-xs font-medium text-slate-500 whitespace-nowrap">${formatDateDDMMYY(row.date)}</td><td class="py-3 px-4 text-xs font-bold text-slate-700 uppercase whitespace-nowrap">${row.supplier}</td><td class="py-3 px-4 text-xs font-mono text-slate-500 whitespace-nowrap">${row.invoice}</td><td class="py-3 px-4 text-xs font-bold text-right text-slate-700 whitespace-nowrap">${p.amount.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} ${p.currency}</td><td class="py-3 px-4 text-xs text-slate-500 text-right font-medium whitespace-nowrap">${formatDateDDMMYY(p.supplier_due || row.supplier_due)}</td>`; container.appendChild(tr); });
+                    const invKey = `${String(row.invoice).trim().toUpperCase()}|${String(row.supplier).trim().toUpperCase()}`;
+                    if (!processedRemainderInvoices.has(invKey)) {
+                        const bal = getInvoiceBalance(row.invoice, row.supplier);
+                        if (bal.remainder > 0.01) { const curCode = row.total_invoice_currency || (row.payments[0]?.currency || 'EUR'); totalEUR += getAmountInEUR(bal.remainder, curCode); const tr = document.createElement('tr'); tr.className = "hover:bg-slate-50 transition-colors bg-red-50/30"; tr.innerHTML = `<td class="py-3 px-4 text-xs font-medium text-slate-500 whitespace-nowrap">${formatDateDDMMYY(row.date)}</td><td class="py-3 px-4 text-xs font-bold text-slate-700 uppercase whitespace-nowrap">${row.supplier}</td><td class="py-3 px-4 text-xs font-mono text-slate-500 whitespace-nowrap">${row.invoice} (Bal)</td><td class="py-3 px-4 text-xs font-bold text-right text-red-600 whitespace-nowrap">${bal.remainder.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} ${curCode}</td><td class="py-3 px-4 text-xs text-slate-500 text-right font-medium whitespace-nowrap">${formatDateDDMMYY(row.supplier_due)}</td>`; container.appendChild(tr); }
+                        processedRemainderInvoices.add(invKey);
+                    }
+                }
+            });
+            document.getElementById('open-situation-total').textContent = totalEUR.toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'; document.getElementById('open-situation-modal').classList.add('active');
+        }
+        function exportToExcel() {
+            const exportData = []; data.forEach(row => { row.payments.forEach(p => { exportData.push({ Date: row.date, Supplier: row.supplier, 'Invoice #': row.invoice, 'Component Amount': p.amount, Currency: p.currency, Bank: p.bank, Method: p.type, 'Sup. Status': p.supplier_status, 'Bank Status': p.bank_status, 'Supplier Due': p.supplier_due, 'Bank Due': p.cyclo_due }); }); });
+            const ws = XLSX.utils.json_to_sheet(exportData), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Portfolio"); XLSX.writeFile(wb, `Cyclo_Portfolio_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+        function exportOpenSituationToExcel() {
+            const situationSelect = document.getElementById('situation-supplier-select'), sitYearSelect = document.getElementById('situation-year-select');
+            const selSupp = situationSelect ? situationSelect.value : 'all', selYear = sitYearSelect ? sitYearSelect.value : 'all';
+            const exportData = []; const processedRemainderInvoices = new Set();
+            data.forEach(row => {
+                const rowDate = new Date(row.date), rowYear = rowDate.getFullYear(), isTarget = (selSupp === 'all' || row.supplier === selSupp) && (selYear === 'all' || rowYear == selYear);
+                if (isTarget) {
+                    const pending = row.payments.filter(p => p.supplier_status !== 'Paid');
+                    pending.forEach(p => {
+                        exportData.push({
+                            'DATE': formatDateDDMMYY(row.date),
+                            'SUPPLIER': row.supplier,
+                            'INVOICE': row.invoice,
+                            'AMOUNT': p.amount.toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' ' + p.currency,
+                            'DUE DATE': formatDateDDMMYY(p.supplier_due || row.supplier_due)
+                        });
+                    });
+                    const invKey = `${String(row.invoice).trim().toUpperCase()}|${String(row.supplier).trim().toUpperCase()}`;
+                    if (!processedRemainderInvoices.has(invKey)) {
+                        const bal = getInvoiceBalance(row.invoice, row.supplier);
+                        if (bal.remainder > 0.01) {
+                            const curCode = row.total_invoice_currency || (row.payments[0]?.currency || 'EUR');
+                            exportData.push({
+                                'DATE': formatDateDDMMYY(row.date),
+                                'SUPPLIER': row.supplier,
+                                'INVOICE': row.invoice + ' (Bal)',
+                                'AMOUNT': bal.remainder.toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' ' + curCode,
+                                'DUE DATE': formatDateDDMMYY(row.supplier_due)
+                            });
+                        }
+                        processedRemainderInvoices.add(invKey);
+                    }
+                }
+            });
+            const ws = XLSX.utils.json_to_sheet(exportData), wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Open Situation");
+            XLSX.writeFile(wb, `Cyclo_Open_Situation_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+        function handleFileImport(event) {
+            const file = event.target.files[0]; if (!file) return;
+            const reader = new FileReader(); reader.onload = function (e) {
+                try {
+                    const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: true }), worksheet = workbook.Sheets[workbook.SheetNames[0]], json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+                    if (json.length === 0) return;
+                    const clean = (str) => String(str || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+                    const getVal = (row, keywords, avoid = [], strict = false) => { const rowKeys = Object.keys(row); for (const kw of keywords) { const cleanKw = clean(kw), exactMatch = rowKeys.find(key => clean(key) === cleanKw); if (exactMatch) return row[exactMatch]; if (!strict) { const fuzzyMatch = rowKeys.find(key => { const cleanKey = clean(key); return cleanKey.includes(cleanKw) && !avoid.some(av => cleanKey.includes(clean(av))); }); if (fuzzyMatch) return row[fuzzyMatch]; } } return null; };
+                    json.forEach(row => {
+                        let rawAmtVal = getVal(row, ['amount', 'montant', 'total', 'amt'], ['id', 'num']), amount = 0;
+                        if (rawAmtVal !== null && rawAmtVal !== "") { let str = String(rawAmtVal).toLowerCase().replace(/\s/g, ''), numericStr = str.replace(/[^0-9.,-]/g, ""); if (numericStr.includes(',') && numericStr.includes('.')) { if (numericStr.indexOf(',') > numericStr.indexOf('.')) numericStr = numericStr.replace(/\./g, "").replace(",", "."); else numericStr = numericStr.replace(/,/g, ""); } else if (numericStr.includes(',')) numericStr = numericStr.replace(',', '.'); amount = (parseFloat(numericStr) || 0) * (str.includes('k') ? 1000 : 1); }
+                        let currency = "EUR", rawCcy = getVal(row, ['currency', 'devise'], []), textToCheck = ((rawCcy ? String(rawCcy) : "") + " " + (rawAmtVal ? String(rawAmtVal) : "")).toUpperCase();
+                        if (textToCheck.includes('MAD') || textToCheck.includes('DH')) currency = 'MAD'; else if (textToCheck.includes('USD') || textToCheck.includes('$')) currency = 'USD';
+                        let rawInvoice = getVal(row, ['invoice number', 'facture', 'reference'], ['date', 'amount', 'supplier']), invoiceStr = rawInvoice ? String(rawInvoice).trim().toUpperCase() : "N/A";
+                        if (!invoiceStr.toLowerCase().includes('avoir')) amount = Math.abs(amount);
+                        let rawSupplier = getVal(row, ['supplier', 'vendor', 'fournisseur'], ['ref', 'invoice']), supplierStr = rawSupplier ? String(rawSupplier).trim().toUpperCase() : "UNSPECIFIED";
+                        let rawPayVal = String(getVal(row, ['payment mode', 'method'], []) || "").toLowerCase(), method = rawPayVal.includes('lc') || rawPayVal.includes('credit') ? "Credit Line" : (rawPayVal.includes('chq') ? "Cheque" : "Wire Transfer");
+                        let bank = rawPayVal.includes('bmci') ? "BMCI" : (rawPayVal.includes('awb') ? "AWB" : ""); if (!bank) { let rb = String(getVal(row, ['bank'], []) || "").toLowerCase(); bank = rb.includes('bmci') ? "BMCI" : (rb.includes('awb') ? "AWB" : ""); }
+                        const parseDate = (val) => { if (!val) return ""; if (typeof val === 'number') { const date = new Date(Math.round((val - 25569) * 864e5)); return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`; } let d = (val instanceof Date) ? val : new Date(val); if (isNaN(d.getTime())) return ""; return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+                        let rowDates = []; Object.keys(row).forEach(key => { if (/amount|montant|solde|invoice|ref|id|num/i.test(key) && !/date|echeance|due/i.test(key)) return; let pd = parseDate(row[key]); if (pd && parseInt(pd.split('-')[0]) >= 2020) rowDates.push(pd); });
+                        rowDates = [...new Set(rowDates)].sort(); let finalDate = rowDates[0] || new Date().toISOString().split('T')[0], finalSupDue = rowDates[1] || "", finalCycloDue = rowDates[2] || finalSupDue;
+
+                        // IMPROVED STATUS LOGIC: Handle Montant vs Montant Ouvert
+                        let rawMontant = getVal(row, ['montant', 'amount', 'total'], ['ouvert', 'open', 'solde']),
+                            rawOuvert = getVal(row, ['montant ouvert', 'ouvert', 'open', 'solde'], []),
+                            pStatusS = 'Pending', pStatusB = 'Pending';
+
+                        const parseNum = (val) => {
+                            if (val === null || val === "") return null;
+                            let str = String(val).toLowerCase().replace(/\s/g, ''),
+                                numericStr = str.replace(/[^0-9.,-]/g, "");
+                            if (numericStr.includes(',') && numericStr.includes('.')) {
+                                if (numericStr.indexOf(',') > numericStr.indexOf('.')) numericStr = numericStr.replace(/\./g, "").replace(",", ".");
+                                else numericStr = numericStr.replace(/,/g, "");
+                            } else if (numericStr.includes(',')) numericStr = numericStr.replace(',', '.');
+                            return (parseFloat(numericStr) || 0) * (str.includes('k') ? 1000 : 1);
+                        };
+
+                        let valMontant = parseNum(rawMontant) || amount; // fallback to 'amount' from previous logic
+                        let valOuvert = parseNum(rawOuvert);
+
+                        let components = [];
+                        if (valOuvert !== null) {
+                            valMontant = Math.abs(valMontant);
+                            valOuvert = Math.abs(valOuvert);
+
+                            if (valOuvert >= valMontant) {
+                                // Fully Unpaid: one Pending component
+                                components.push({ amount: valMontant, statusS: 'Pending', statusB: 'Pending' });
+                            } else if (valOuvert <= 0) {
+                                // Fully Paid: one Paid component
+                                components.push({ amount: valMontant, statusS: 'Paid', statusB: (method !== 'Credit Line' ? 'Paid' : 'Pending') });
+                            } else {
+                                // Partial Payment: Paid part + Open part
+                                let paidPart = valMontant - valOuvert;
+                                components.push({ amount: paidPart, statusS: 'Paid', statusB: (method !== 'Credit Line' ? 'Paid' : 'Pending') });
+                                // The remaining 'valOuvert' will be shown via the 'Unpaid' logic in renderTable
+                            }
+                        } else {
+                            // Fallback if no "Ouvert" column
+                            if (!finalSupDue || new Date(finalSupDue) <= new Date()) pStatusS = 'Paid';
+                            components.push({ amount: Math.abs(amount), statusS: pStatusS, statusB: pStatusB });
+                        }
+
+                        let exIdx = (invoiceStr && invoiceStr !== "N/A") ? data.findIndex(d => d.invoice === invoiceStr && (!finalCycloDue || !d.cyclo_due || finalCycloDue === d.cyclo_due)) : -1;
+                        if (exIdx !== -1) {
+                            components.forEach(comp => {
+                                data[exIdx].payments.push({
+                                    amount: comp.amount, currency, type: method, bank,
+                                    supplier_status: comp.statusS, bank_status: comp.statusB,
+                                    supplier_due: finalSupDue, cyclo_due: finalCycloDue
+                                });
+                            });
+                            data[exIdx].total_invoice_amount = Math.max(data[exIdx].total_invoice_amount || 0, data[exIdx].payments.reduce((a, b) => a + b.amount, 0));
+                        } else {
+                            data.push({
+                                id: Date.now() + Math.random(), date: finalDate, supplier: supplierStr, invoice: invoiceStr,
+                                total_invoice_amount: valMontant,
+                                payments: components.map(comp => ({
+                                    amount: comp.amount, currency, type: method, bank,
+                                    supplier_status: comp.statusS, bank_status: comp.statusB,
+                                    supplier_due: finalSupDue, cyclo_due: finalCycloDue
+                                })),
+                                supplier_due: finalSupDue, cyclo_due: finalCycloDue
+                            });
+                        }
+                    });
+                    saveData(); renderTable(true); calculateMetrics(); populateTrackerSelectors(); alert(`Processed ${json.length} items.`);
+                } catch (err) { alert("Error: " + err.message); }
+            }; reader.readAsArrayBuffer(file);
+        }
+        function saveData() { localStorage.setItem('cycloManagerData', JSON.stringify({ data, SETTINGS, suppliers, banks })); }
+        function loadData() {
+            const saved = localStorage.getItem('cycloManagerData');
+            if (saved) {
+                const parsed = JSON.parse(saved); if (parsed.data) data = parsed.data;
+                if (parsed.SETTINGS) { SETTINGS = { ...SETTINGS, ...parsed.SETTINGS }; if (!SETTINGS.BANK_LIMITS || typeof Object.values(SETTINGS.BANK_LIMITS)[0] !== 'object') { const m = {}; banks.forEach(b => { m[b] = { value: SETTINGS.BANK_LIMITS?.[b] || (b === "AWB" ? 727272.73 : 625000.00), currency: 'EUR' }; }); SETTINGS.BANK_LIMITS = m; } const em = document.getElementById('rate-eur-mad'), um = document.getElementById('rate-usd-mad'); if (em) em.value = SETTINGS.RATE_EUR_MAD; if (um) um.value = SETTINGS.RATE_USD_MAD; }
+                if (parsed.suppliers) suppliers = parsed.suppliers; if (parsed.banks) banks = parsed.banks;
+            }
+        }
+        window.onload = () => { populateTrackerSelectors(); calculateMetrics(); renderTable(); syncLiveRates(); setInterval(syncLiveRates, 60000); setTimeout(scrollToToday, 600); };
+        //loadData();
+    </script>
+</body>
+
+</html>
