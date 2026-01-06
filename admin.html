@@ -73,8 +73,14 @@
         import { supabase } from './supabaseClient.js';
 
         // Auth Check
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) window.location.href = 'login.html';
+        try {
+            const { data: { session }, error } = await supabase.auth.getSession();
+            if (error) throw error;
+            if (!session) window.location.href = 'login.html';
+        } catch (err) {
+            console.error("Auth check failed:", err);
+            window.location.href = 'login.html';
+        }
 
         async function logout() {
             await supabase.auth.signOut();

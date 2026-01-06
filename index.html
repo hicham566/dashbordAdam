@@ -18,17 +18,45 @@
     <script src="theme.js"></script>
     <script type="module">
         import { supabase } from './supabaseClient.js';
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) window.location.href = 'login.html';
 
-        // Expose user for UI
-        if (session && session.user) {
-            // Mock user object for existing logic compatibility or fetch profile
-            window.user = {
-                name: session.user.user_metadata.name || session.user.email,
-                role: session.user.user_metadata.role || 'user'
-            };
+        async function initDashboard() {
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                if (error) throw error;
+                if (!session) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+
+                // Expose user for UI
+                if (session && session.user) {
+                    const user = {
+                        name: session.user.user_metadata.name || session.user.email,
+                        role: session.user.user_metadata.role || 'user'
+                    };
+                    window.user = user;
+
+                    // Update UI
+                    const nameEl = document.getElementById('user-display-name');
+                    const roleEl = document.getElementById('user-display-role');
+                    const adminLink = document.getElementById('admin-link-container');
+
+                    if (nameEl) nameEl.textContent = user.name;
+                    if (roleEl) roleEl.textContent = user.role; // Hide if generic?
+
+                    // Show admin link if role is admin
+                    if (user.role === 'admin' && adminLink) {
+                        adminLink.classList.remove('hidden');
+                    }
+                }
+            } catch (err) {
+                console.error("Auth check failed:", err);
+                alert("Authentication error. Please log in again.");
+                // window.location.href = 'login.html'; 
+            }
         }
+
+        initDashboard();
     </script>
     <style>
         .excel-border {
