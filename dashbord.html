@@ -16,11 +16,19 @@
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="theme.js"></script>
-    <script>
-        // Auth Guard - Immediate check
-        const token = localStorage.getItem('cyclo_token');
-        const user = JSON.parse(localStorage.getItem('cyclo_user') || '{}');
-        if (!token) window.location.href = 'login.html';
+    <script type="module">
+        import { supabase } from './supabaseClient.js';
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) window.location.href = 'login.html';
+
+        // Expose user for UI
+        if (session && session.user) {
+            // Mock user object for existing logic compatibility or fetch profile
+            window.user = {
+                name: session.user.user_metadata.name || session.user.email,
+                role: session.user.user_metadata.role || 'user'
+            };
+        }
     </script>
     <style>
         .excel-border {
@@ -1239,13 +1247,12 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { supabase } from './supabaseClient.js';
+
         // --- DATA STATE ---
-        const API_BASE = '/api';
-        const HEADERS = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        };
+        // Removed API_BASE and HEADERS as we use Supabase Client directly
+
 
         let SETTINGS = {
             LIMIT_AWB: 727272.73,
@@ -1582,13 +1589,26 @@
             return { date: toISODate(document.getElementById('new-date').value), supplier: String(document.getElementById('new-supplier').value), invoice: invoiceStr, total_invoice_amount: finalTotal, total_invoice_currency: totalInvoiceCurrency, payments, supplier_due: firstPayment.supplier_due || '', cyclo_due: firstPayment.cyclo_due || '' };
         }
 
-        function saveNewEntry() {
+        async function saveNewEntry() {
             const invoiceStr = String(document.getElementById('new-invoice').value).trim().toUpperCase();
             if (!invoiceStr) { alert("Please enter an Invoice Number."); return; }
             const currentData = gatherFormData();
-            if (editingId !== null) { const idx = data.findIndex(d => d.id === editingId); if (idx !== -1) data[idx] = { ...data[idx], ...currentData }; }
-            else { data.push({ id: Date.now(), ...currentData }); }
-            saveData(); closeEntryModal(); renderTable();
+
+            try {
+                if (editingId !== null) {
+                    const { error } = await supabase.from('entries').update(currentData).eq('id', editingId);
+                    if (error) throw error;
+                    const idx = data.findIndex(d => d.id === editingId);
+                    if (idx !== -1) data[idx] = { ...data[idx], ...currentData };
+                } else {
+                    const { data: inserted, error } = await supabase.from('entries').insert([currentData]).select();
+                    if (error) throw error;
+                    if (inserted && inserted.length > 0) data.push(inserted[0]);
+                }
+                closeEntryModal(); renderTable();
+            } catch (e) {
+                alert("Error saving entry: " + e.message);
+            }
         }
 
         function clearFilters() {
@@ -1598,20 +1618,37 @@
 
         function toggleStatus(id, target, index) { statusChangeParams = { id, target, index }; document.getElementById('status-confirm-modal').classList.add('active'); }
         function closeStatusModal() { statusChangeParams = null; document.getElementById('status-confirm-modal').classList.remove('active'); }
-        function confirmStatusChange() {
+        async function confirmStatusChange() {
             if (!statusChangeParams) return;
             const { id, target, index } = statusChangeParams;
             const r = data.find(d => d.id === id);
             if (r && r.payments[index]) {
-                if (target === 'supplier') { const current = r.payments[index].supplier_status; r.payments[index].supplier_status = (current === 'Paid') ? 'Pending' : 'Paid'; }
-                else { const current = r.payments[index].bank_status; r.payments[index].bank_status = (current === 'Paid') ? 'Pending' : 'Paid'; }
-                saveData(); renderTable();
+                const pClone = JSON.parse(JSON.stringify(r.payments)); // Deep copy
+                const current = (target === 'supplier') ? pClone[index].supplier_status : pClone[index].bank_status;
+                const newStatus = (current === 'Paid') ? 'Pending' : 'Paid';
+
+                if (target === 'supplier') pClone[index].supplier_status = newStatus;
+                else pClone[index].bank_status = newStatus;
+
+                const { error } = await supabase.from('entries').update({ payments: pClone }).eq('id', id);
+                if (error) { alert("Error updating status: " + error.message); return; }
+
+                r.payments = pClone;
+                renderTable();
             }
             closeStatusModal();
         }
 
         function deleteRow(id) { idToDelete = id; document.getElementById('delete-modal').classList.add('active'); }
-        function confirmDelete() { if (idToDelete !== null) { data = data.filter(d => d.id !== idToDelete); saveData(); renderTable(); } closeDeleteModal(); }
+        async function confirmDelete() {
+            if (idToDelete !== null) {
+                const { error } = await supabase.from('entries').delete().eq('id', idToDelete);
+                if (error) { alert("Error deleting: " + error.message); return; }
+                data = data.filter(d => d.id !== idToDelete);
+                renderTable();
+            }
+            closeDeleteModal();
+        }
         function closeDeleteModal() { idToDelete = null; document.getElementById('delete-modal').classList.remove('active'); }
 
         function autoCalculateDates() {
@@ -2060,67 +2097,34 @@
                 } catch (err) { alert("Error: " + err.message); }
             }; reader.readAsArrayBuffer(file);
         }
-        async function saveData() {
+        async function saveGlobalSettings() {
             try {
-                // Save settings (including suppliers/banks)
-                await fetch(`${API_BASE}/settings`, {
-                    method: 'POST',
-                    headers: HEADERS,
-                    body: JSON.stringify({ SETTINGS, suppliers, banks })
-                });
-
-                // Sync all data entries
-                const syncRes = await fetch(`${API_BASE}/data/sync`, {
-                    method: 'POST',
-                    headers: HEADERS,
-                    body: JSON.stringify(data)
-                });
-                if (!syncRes.ok) throw new Error('Sync failed');
+                // Upsert settings
+                const payload = { SETTINGS, suppliers, banks };
+                const { error } = await supabase.from('settings').upsert({ key: 'app_settings', value: payload });
+                if (error) console.error('Settings save error:', error);
             } catch (err) {
-                console.error('Save error:', err);
-                // Fallback to localStorage if server is down
-                localStorage.setItem('cycloManagerData', JSON.stringify({ data, SETTINGS, suppliers, banks }));
+                console.error('Settings save error:', err);
             }
         }
 
         async function loadData() {
             try {
                 // Load settings
-                const settingsRes = await fetch(`${API_BASE}/settings`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const savedSettings = await settingsRes.json();
-                if (savedSettings) {
+                const { data: settingsData } = await supabase.from('settings').select('value').eq('key', 'app_settings').single();
+                if (settingsData && settingsData.value) {
+                    const savedSettings = settingsData.value;
                     if (savedSettings.SETTINGS) SETTINGS = { ...SETTINGS, ...savedSettings.SETTINGS };
                     if (savedSettings.suppliers) suppliers = savedSettings.suppliers;
                     if (savedSettings.banks) banks = savedSettings.banks;
                 }
 
                 // Load entries
-                const dataRes = await fetch(`${API_BASE}/data`, { headers: { 'Authorization': `Bearer ${token}` } });
-                if (dataRes.status === 401 || dataRes.status === 403) logout();
-                data = await dataRes.json();
+                const { data: entriesData, error } = await supabase.from('entries').select('*');
+                if (error) throw error;
+                data = entriesData || [];
             } catch (err) {
                 console.error('Load error:', err);
-                // Fallback to localStorage
-                const saved = localStorage.getItem('cycloManagerData');
-                if (saved) {
-                    const parsed = JSON.parse(saved);
-                    if (parsed.data) data = parsed.data;
-                    if (parsed.SETTINGS) {
-                        SETTINGS = { ...SETTINGS, ...parsed.SETTINGS };
-                        if (!SETTINGS.BANK_LIMITS || typeof Object.values(SETTINGS.BANK_LIMITS)[0] !== 'object') {
-                            const m = {};
-                            banks.forEach(b => {
-                                m[b] = { value: SETTINGS.BANK_LIMITS?.[b] || (b === "AWB" ? 727272.73 : 625000.00), currency: 'EUR' };
-                            });
-                            SETTINGS.BANK_LIMITS = m;
-                        }
-                        const em = document.getElementById('rate-eur-mad'), um = document.getElementById('rate-usd-mad');
-                        if (em) em.value = SETTINGS.RATE_EUR_MAD;
-                        if (um) um.value = SETTINGS.RATE_USD_MAD;
-                    }
-                    if (parsed.suppliers) suppliers = parsed.suppliers;
-                    if (parsed.banks) banks = parsed.banks;
-                }
             } finally {
                 populateTrackerSelectors();
                 calculateMetrics();
@@ -2128,17 +2132,19 @@
             }
         }
 
-        function logout() {
-            localStorage.clear();
+        async function logout() {
+            await supabase.auth.signOut();
             window.location.href = 'login.html';
         }
 
         window.onload = async () => {
-            // Populate user info
-            document.getElementById('user-display-name').textContent = user.name || 'User';
-            document.getElementById('user-display-role').textContent = user.role === 'admin' ? 'System Administrator' : 'Standard User';
-            if (user.role === 'admin') {
-                document.getElementById('admin-link-container').classList.remove('hidden');
+            // Populate user info from window.user set in head
+            if (window.user) {
+                document.getElementById('user-display-name').textContent = window.user.name || 'User';
+                document.getElementById('user-display-role').textContent = window.user.role === 'admin' ? 'System Administrator' : 'Standard User';
+                if (window.user.role === 'admin') {
+                    document.getElementById('admin-link-container').classList.remove('hidden');
+                }
             }
 
             await loadData();
@@ -2146,6 +2152,17 @@
             setInterval(syncLiveRates, 60000);
             setTimeout(scrollToToday, 600);
         };
+
+        // EXPORT GLOBALS FOR UI
+        Object.assign(window, {
+            switchPage, scrollTracker, scrollToToday, toggleTrackerRangeTab, updateTrackerConfig, setQuickRange,
+            renderTable, changePage, openEntryModal, closeEntryModal, saveNewEntry, clearFilters, toggleStatus,
+            closeStatusModal, confirmStatusChange, deleteRow, confirmDelete, closeDeleteModal, autoCalculateDates,
+            toggleDateTab, applyDateOffset, updateSettings, openConfigModal, loadBankLimit, saveBankLimit,
+            loadSupplierLimit, saveSupplierLimit, addEntity, confirmAddBank, confirmAddSupplier, deleteEntity,
+            closeConfigModal, syncLiveRates, quickConvert, showOpenSituationDetails, exportToExcel,
+            exportOpenSituationToExcel, handleFileImport, addPaymentRow, logout, saveGlobalSettings
+        });
     </script>
 </body>
 

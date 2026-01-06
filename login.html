@@ -129,8 +129,16 @@
         </div>
     </div>
 
-    <script>
-        const API_BASE = '/api';
+    <script type="module">
+        import { supabase } from './supabaseClient.js';
+
+        // Check active session
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+            // Check profile for role (optional, for now just redirect to dashboard)
+            // Ideally you'd fetch the user's role from a 'users' table or metadata
+            window.location.href = 'dashbord.html';
+        }
 
         document.getElementById('login-form').onsubmit = async (e) => {
             e.preventDefault();
@@ -141,36 +149,21 @@
             errorEl.classList.add('hidden');
 
             try {
-                const res = await fetch(`${API_BASE}/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: email,
+                    password: password,
                 });
 
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Login failed');
+                if (error) throw error;
 
-                localStorage.setItem('cyclo_token', data.token);
-                localStorage.setItem('cyclo_user', JSON.stringify(data.user));
+                // Success
+                window.location.href = 'dashbord.html';
 
-                // Redirect based on role
-                if (data.user.role === 'admin') {
-                    window.location.href = 'admin.html';
-                } else {
-                    window.location.href = 'dashbord.html';
-                }
             } catch (err) {
-                errorEl.textContent = err.message;
+                errorEl.textContent = err.message || 'Login failed';
                 errorEl.classList.remove('hidden');
             }
         };
-
-        // Redirect if already logged in
-        if (localStorage.getItem('cyclo_token')) {
-            const user = JSON.parse(localStorage.getItem('cyclo_user'));
-            if (user && user.role === 'admin') window.location.href = 'admin.html';
-            else window.location.href = 'dashbord.html';
-        }
     </script>
 </body>
 

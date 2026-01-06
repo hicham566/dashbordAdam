@@ -15,29 +15,6 @@
         }
     </script>
     <script src="theme.js"></script>
-    <style>
-        .row-hover:hover {
-            background-color: #f8fafc;
-        }
-
-        .modal-overlay {
-            display: none;
-            background: rgba(15, 23, 42, 0.6);
-            backdrop-filter: blur(4px);
-        }
-
-        .modal-overlay.active {
-            display: flex;
-        }
-
-        .dark .modal-overlay {
-            background: rgba(2, 6, 23, 0.8);
-        }
-
-        .dark .row-hover:hover {
-            background-color: #0f172a;
-        }
-    </style>
 </head>
 
 <body
@@ -49,8 +26,7 @@
                 <h1 class="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight uppercase">Admin
                     Control Center</h1>
                 <p class="text-slate-500 dark:text-slate-400 font-bold text-xs uppercase tracking-widest mt-1">User
-                    Management & System
-                    Access</p>
+                    Management & System Access</p>
             </div>
             <div class="flex gap-3">
                 <a href="dashbord.html"
@@ -79,184 +55,35 @@
             </div>
         </div>
 
-        <!-- Stats Card -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-            <div
-                class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800">
-                <span
-                    class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-4">Total
-                    Access
-                    Users</span>
-                <div class="text-3xl font-black text-slate-800 dark:text-slate-100" id="user-count">0</div>
-            </div>
-            <div
-                class="md:col-span-2 bg-blue-600 dark:bg-blue-700 p-6 rounded-[2.5rem] shadow-xl shadow-blue-200 dark:shadow-none text-white flex justify-between items-center">
-                <div>
-                    <h3 class="text-lg font-bold">Manage Authorization</h3>
-                    <p class="text-blue-100 text-xs opacity-70">Create and monitor internal user access</p>
-                </div>
-                <button onclick="openModal()"
-                    class="px-6 py-3 bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 font-black text-xs uppercase rounded-2xl hover:bg-blue-50 dark:hover:bg-slate-800 transition-all shadow-lg">+
-                    New User</button>
-            </div>
+        <!-- Info Card -->
+        <div class="bg-blue-600 dark:bg-blue-700 p-8 rounded-[2rem] shadow-xl text-white">
+            <h2 class="text-xl font-bold mb-2">Supabase Migration</h2>
+            <p class="text-blue-100 opacity-90 mb-6">User management has been migrated to the Supabase Dashboard. You
+                can invite users, manage roles (using metadata), and handle passwords directly from there.</p>
+
+            <a href="https://supabase.com/dashboard" target="_blank"
+                class="inline-block px-6 py-3 bg-white text-blue-600 font-black text-xs uppercase rounded-2xl hover:bg-blue-50 transition-all">
+                Go to Supabase Dashboard
+            </a>
         </div>
 
-        <!-- Users Table -->
-        <div
-            class="bg-white dark:bg-slate-900 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <table class="w-full text-left">
-                <thead>
-                    <tr
-                        class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                        <th class="px-6 py-4">Name</th>
-                        <th class="px-6 py-4">Email Address</th>
-                        <th class="px-6 py-4">System Role</th>
-                        <th class="px-6 py-4 text-right">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="user-table-body" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
-            </table>
-        </div>
     </div>
 
-    <!-- CREATE USER MODAL -->
-    <div id="user-modal" class="modal-overlay fixed inset-0 z-[100] items-center justify-center p-4">
-        <div
-            class="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl max-w-md w-full p-8 animate-in zoom-in-95 duration-300">
-            <div class="mb-8">
-                <h2 class="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">Create New
-                    User</h2>
-                <p class="text-[10px] text-blue-600 dark:text-blue-400 uppercase font-black tracking-widest">Assign
-                    System Privileges</p>
-            </div>
+    <script type="module">
+        import { supabase } from './supabaseClient.js';
 
-            <form id="user-form" class="space-y-5">
-                <div class="space-y-1">
-                    <label class="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase px-1">Full
-                        Name</label>
-                    <input type="text" id="name" required
-                        class="w-full p-3.5 border border-slate-200 dark:border-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 transition-all font-bold text-sm bg-white dark:bg-slate-950 dark:text-slate-200">
-                </div>
-                <div class="space-y-1">
-                    <label
-                        class="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase px-1">Email</label>
-                    <input type="email" id="user-email" required
-                        class="w-full p-3.5 border border-slate-200 dark:border-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 transition-all font-bold text-sm bg-white dark:bg-slate-950 dark:text-slate-200">
-                </div>
-                <div class="space-y-1">
-                    <label
-                        class="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase px-1">Temporary
-                        Password</label>
-                    <input type="password" id="user-password" required
-                        class="w-full p-3.5 border border-slate-200 dark:border-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 transition-all font-bold text-sm bg-white dark:bg-slate-950 dark:text-slate-200">
-                </div>
-                <div class="space-y-1">
-                    <label class="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase px-1">Role
-                        Type</label>
-                    <select id="role"
-                        class="w-full p-3.5 border border-slate-200 dark:border-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 transition-all font-bold text-sm appearance-none bg-white dark:bg-slate-950 dark:text-slate-200">
-                        <option value="user">Standard User</option>
-                        <option value="admin">System Admin</option>
-                    </select>
-                </div>
+        // Auth Check
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) window.location.href = 'login.html';
 
-                <div class="flex gap-3 pt-4">
-                    <button type="button" onclick="closeModal()"
-                        class="flex-1 py-3 text-slate-500 dark:text-slate-400 font-bold text-xs uppercase hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-all">Cancel</button>
-                    <button type="submit"
-                        class="flex-1 py-3 bg-blue-600 text-white font-black text-xs uppercase rounded-2xl shadow-xl shadow-blue-100 dark:shadow-none hover:bg-blue-700 transition-all">Create
-                        User</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <script>
-        const API_BASE = '/api';
-        const token = localStorage.getItem('cyclo_token');
-
-        if (!token) window.location.href = 'login.html';
-
-        async function fetchUsers() {
-            try {
-                const res = await fetch(`${API_BASE}/users`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.status === 401 || res.status === 403) window.location.href = 'login.html';
-
-                const users = await res.json();
-                renderUsers(users);
-                document.getElementById('user-count').textContent = users.length;
-            } catch (err) { console.error(err); }
+        async function logout() {
+            await supabase.auth.signOut();
+            window.location.href = 'login.html';
         }
 
-        function renderUsers(users) {
-            const tbody = document.getElementById('user-table-body');
-            tbody.innerHTML = '';
-            users.forEach(u => {
-                const tr = document.createElement('tr');
-                tr.className = 'row-hover group transition-colors';
-                tr.innerHTML = `
-                    <td class="px-6 py-4 font-bold text-slate-700 dark:text-slate-200">${u.name}</td>
-                    <td class="px-6 py-4 text-slate-400 dark:text-slate-500 font-medium">${u.email}</td>
-                    <td class="px-6 py-4">
-                        <span class="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${u.role === 'admin' ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}">${u.role}</span>
-                    </td>
-                    <td class="px-6 py-4 text-right">
-                        ${u.role === 'admin' ? '' : `
-                        <button onclick="deleteUser(${u.id})" class="p-2 text-slate-300 dark:text-slate-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                        </button>
-                        `}
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        async function deleteUser(id) {
-            if (!confirm('Permanently remove this user access?')) return;
-            try {
-                const res = await fetch(`${API_BASE}/users/${id}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.ok) fetchUsers();
-            } catch (err) { console.error(err); }
-        }
-
-        document.getElementById('user-form').onsubmit = async (e) => {
-            e.preventDefault();
-            const name = document.getElementById('name').value;
-            const email = document.getElementById('user-email').value;
-            const password = document.getElementById('user-password').value;
-            const role = document.getElementById('role').value;
-
-            try {
-                const res = await fetch(`${API_BASE}/users`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ name, email, password, role })
-                });
-                if (res.ok) {
-                    closeModal();
-                    fetchUsers();
-                    document.getElementById('user-form').reset();
-                } else {
-                    const data = await res.json();
-                    alert(data.error);
-                }
-            } catch (err) { console.error(err); }
-        };
-
-        function openModal() { document.getElementById('user-modal').classList.add('active'); }
-        function closeModal() { document.getElementById('user-modal').classList.remove('active'); }
-        function logout() { localStorage.clear(); window.location.href = 'login.html'; }
-
-        fetchUsers();
+        // Export globals
+        window.logout = logout;
+        // toggleTheme is globally available from theme.js
     </script>
 </body>
 
