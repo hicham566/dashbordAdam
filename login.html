@@ -137,7 +137,7 @@
         if (session) {
             // Check profile for role (optional, for now just redirect to dashboard)
             // Ideally you'd fetch the user's role from a 'users' table or metadata
-            window.location.href = 'dashbord.html';
+            window.location.href = 'index.html';
         }
 
         document.getElementById('login-form').onsubmit = async (e) => {
@@ -157,7 +157,7 @@
                 if (error) throw error;
 
                 // Success
-                window.location.href = 'dashbord.html';
+                window.location.href = 'index.html';
 
             } catch (err) {
                 errorEl.textContent = err.message || 'Login failed';
